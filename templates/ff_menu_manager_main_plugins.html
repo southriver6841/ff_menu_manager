@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex; gap:8px; margin-bottom:12px;">
+  <button class="btn btn-sm btn-primary" id="mp_save">저장</button>
+  <button class="btn btn-sm btn-outline-secondary" id="mp_reload">다시 불러오기</button>
+</div>
+<div class="alert alert-warning py-2" style="font-size:.85rem">
+  미사용으로 바꾸면 config.yaml 의 <code>plugin_except_list</code> 에 기록되고, <b>FlaskFarm 재시작 후</b> 해당 플러그인이 로딩되지 않습니다.
+  메뉴만 감추려면 "메뉴 편집"의 "메뉴 숨기기"를 쓰세요.
+</div>
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr><th>플러그인</th><th>패키지</th><th>현재 상태</th><th style="width:110px">사용</th></tr></thead>
+    <tbody id="mp_list"></tbody>
+  </table>
+</div>
+
+<script type="text/javascript">
+var mpOriginal = {};
+
+function mpEsc(text) { return $('<div>').text(text == null ? '' : String(text)).html(); }
+
+function mpRender(plugins) {
+  mpOriginal = {};
+  var html = '';
+  plugins.forEach(function(p) {
+    mpOriginal[p.name] = p.enabled;
+    var state = p.loaded ? '<span class="badge badge-success">로딩됨</span>' : '<span class="badge badge-secondary">로딩 안 됨</span>';
+    if (p.loaded !== p.enabled) state += ' <span class="badge badge-warning">재시작 필요</span>';
+    html += '<tr data-name="' + mpEsc(p.name) + '">'
+      + '<td>' + mpEsc(p.title) + '</td>'
+      + '<td><code>' + mpEsc(p.name) + '</code></td>'
+      + '<td>' + state + '</td>'
+      + '<td><div class="custom-control custom-switch">'
+      + '<input type="checkbox" class="custom-control-input mp-toggle" id="mp_' + mpEsc(p.name) + '"' + (p.enabled ? ' checked' : '') + (p.locked ? ' disabled' : '') + '>'
+      + '<label class="custom-control-label" for="mp_' + mpEsc(p.name) + '">' + (p.locked ? '항상 사용' : '사용') + '</label></div></td>'
+      + '</tr>';
+  });
+  $('#mp_list').html(html || '<tr><td colspan="4" class="text-muted text-center">플러그인이 없습니다.</td></tr>');
+}
+
+function mpLoad() {
+  globalSendCommand('load', null, null, null, function(ret) {
+    if (ret.ret !== 'success') { notify(ret.msg || '불러오기 실패', 'warning'); return; }
+    mpRender(ret.data.plugins || []);
+  });
+}
+
+$('body').on('click', '#mp_save', function(e) {
+  e.preventDefault();
+  var changes = {};
+  $('#mp_list tr[data-name]').each(function() {
+    var name = $(this).data('name');
+    var enabled = $(this).find('.mp-toggle').is(':checked');
+    if (mpOriginal[name] !== enabled) changes[name] = enabled;
+  });
+  if ($.isEmptyObject(changes)) { notify('바뀐 내용이 없습니다.', 'info'); return; }
+  globalSendCommand('set_enabled', JSON.stringify(changes), null, null, function(ret) {
+    notify(ret.msg || '', ret.ret === 'success' ? 'success' : 'warning');
+    if (ret.ret === 'success') mpLoad();
+  });
+});
+$('body').on('click', '#mp_reload', function(e) { e.preventDefault(); mpLoad(); });
+$(document).ready(mpLoad);
+</script>
+{% endblock %}
