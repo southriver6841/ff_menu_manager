@@ -87,3 +87,20 @@ def test_disabled_plugin_in_group_is_skipped():
     yaml_list = [{"name": "유틸", "list": [{"uri": mm.GROUP_URI, "name": "g", "list": [{"uri": "gone"}, {"uri": "terminal"}]}]}]
     out = mo.apply_overrides(_ff_built_map(), yaml_list, PLUGIN_MENUS)
     assert [c["uri"] for c in out[0]["list"][0]["list"]] == ["terminal"]
+
+
+def test_setting_child_rename_applied():
+    yaml_list = [{"name": "시스템", "list": [{"uri": "system", "name": "설정"},
+                                           {"uri": "setting", "list": [{"plugin": "terminal", "name": "터미널 옵션"}, {"plugin": "support_site"}]}]}]
+    out = mo.apply_overrides(_ff_built_map(), yaml_list, PLUGIN_MENUS)
+    setting = out[-1]["list"][1]
+    assert [c["name"] for c in setting["list"]] == ["터미널 옵션", "사이트"]
+
+
+def test_link_category_plugin_name_overridden():
+    """상단 바로가기가 플러그인이면 FF 가 플러그인 이름으로 바꾼다 → yaml 이름으로 덧씌운다."""
+    ff_map = [{"uri": "ff_naverpaper", "name": "네이버 폐지줍기"}] + _ff_built_map()
+    yaml_list = [{"name": "폐지", "uri": "ff_naverpaper"}]
+    out = mo.apply_overrides(ff_map, yaml_list, PLUGIN_MENUS)
+    assert out[0]["name"] == "폐지"
+    assert PLUGIN_MENUS["ff_naverpaper"]["menu"]["name"] == "네이버 폐지줍기"

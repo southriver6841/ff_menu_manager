@@ -33,7 +33,10 @@ def _walk_yaml_items(menu_yaml):
 
 
 def _collect(menu_yaml):
-    overrides, setting_hidden, has_groups = {}, set(), False
+    """(이름/숨김 overrides, 확장설정 숨김, 확장설정 이름, 상단 바로가기 이름, 중분류 존재)"""
+    overrides, setting_hidden, setting_names, has_groups = {}, set(), {}, False
+    link_names = {str(c["uri"]): str(c["name"]) for c in menu_yaml or []
+                  if _is_dict(c) and "list" not in c and c.get("uri") and c.get("name")}
     for raw in _walk_yaml_items(menu_yaml):
         uri = raw.get("uri")
         if uri == GROUP_URI:
@@ -42,6 +45,8 @@ def _collect(menu_yaml):
         if raw.get("plugin") and not uri:
             if raw.get("hidden"):
                 setting_hidden.add(str(raw["plugin"]))
+            if raw.get("name"):
+                setting_names[str(raw["plugin"])] = str(raw["name"])
             continue
         if not uri or uri == "-":
             continue
@@ -52,7 +57,7 @@ def _collect(menu_yaml):
             entry["name"] = str(raw["name"])
         if entry:
             overrides[str(uri)] = entry
-    return overrides, setting_hidden, has_groups
+    return overrides, setting_hidden, setting_names, link_names, has_groups
 
 
 # ---- 중분류(GROUP_URI) 를 하위 메뉴로 ------------------------------------------------
@@ -131,7 +136,22 @@ def _visible(items):
     return [i for i in items if _is_dict(i) and i.get("uri") != "-"]
 
 
-def _apply_items(items, overrides, setting_hidden):
+def _apply_setting_children(item, setting_hidden, setting_names):
+    kids, changed = [], False
+    for child in item.get("list") or []:
+        plugin = child.get("plugin") if _is_dict(child) else None
+        if plugin in setting_hidden:
+            changed = True
+            continue
+        if plugin in setting_names and setting_names[plugin] != child.get("name"):
+            child = dict(child, name=setting_names[plugin])
+            changed = True
+        kids.append(child)
+    return (dict(item, list=kids), True) if changed else (item, False)
+
+
+def _apply_items(items, overrides, setting_hidden, setting_names=None):
+    setting_names = setting_names or {}
     out, changed = [], False
     for item in items:
         if not _is_dict(item):
@@ -141,7 +161,7 @@ def _apply_items(items, overrides, setting_hidden):
             changed = True
             if item.get("hidden"):
                 continue
-            children, _ = _apply_items(item.get("list") or [], overrides, setting_hidden)
+            children, _ = _apply_items(item.get("list") or [], overrides, setting_hidden, setting_names)
             if not _visible(children):
                 continue
             group = {k: v for k, v in item.items() if k not in ("mm_group", "hidden")}
@@ -152,11 +172,9 @@ def _apply_items(items, overrides, setting_hidden):
         if override.get("hidden"):
             changed = True
             continue
-        if item.get("uri") == SETTING_URI and setting_hidden and item.get("list"):
-            kept = [c for c in item["list"] if not (_is_dict(c) and c.get("plugin") in setting_hidden)]
-            if len(kept) != len(item["list"]):
-                item = dict(item, list=kept)
-                changed = True
+        if item.get("uri") == SETTING_URI and item.get("list") and (setting_hidden or setting_names):
+            item, setting_changed = _apply_setting_children(item, setting_hidden, setting_names)
+            changed = changed or setting_changed
         if override.get("name") and override["name"] != item.get("name"):
             item = dict(item, name=override["name"])  # 플러그인 원본 메뉴 dict 는 건드리지 않는다
             changed = True
@@ -165,8 +183,8 @@ def _apply_items(items, overrides, setting_hidden):
 
 
 def apply_overrides(menu_map, menu_yaml, plugin_menus=None):
-    overrides, setting_hidden, has_groups = _collect(menu_yaml)
-    if not overrides and not setting_hidden and not has_groups:
+    overrides, setting_hidden, setting_names, link_names, has_groups = _collect(menu_yaml)
+    if not (overrides or setting_hidden or setting_names or link_names or has_groups):
         return menu_map
     menu_map = list(menu_map or [])
     if has_groups:
@@ -175,9 +193,12 @@ def apply_overrides(menu_map, menu_yaml, plugin_menus=None):
     for category in menu_map:
         items = category.get("list") if _is_dict(category) else None
         if items is None:
+            link_name = link_names.get(str(category.get("uri", ""))) if _is_dict(category) else None
+            if link_name and link_name != category.get("name"):
+                category = dict(category, name=link_name)  # 플러그인 바로가기: FF 가 바꾼 이름 되돌림
             out.append(category)
             continue
-        new_items, changed = _apply_items(items, overrides, setting_hidden)
+        new_items, changed = _apply_items(items, overrides, setting_hidden, setting_names)
         if not changed:
             out.append(category)
             continue

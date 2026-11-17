@@ -286,3 +286,42 @@ def test_setting_without_list_and_no_changes_is_saved_unchanged():
     state = mm.build_editor_state(copy.deepcopy(yaml_list), INSTALLED, SETTING_PLUGINS)
 
     assert mm.build_menu_yaml(state) == yaml_list
+
+
+# ---- 모든 메뉴 이름 변경 -----------------------------------------------------------
+
+def test_rename_other_setting_and_setting_children():
+    yaml_list = [{"name": "시스템", "list": [
+        {"uri": "system/plugin", "name": "플러그인 관리"},
+        {"uri": "setting", "name": "확장 설정", "list": [{"plugin": "terminal"}]},
+    ]}]
+    state = mm.build_editor_state(copy.deepcopy(yaml_list), INSTALLED, {"terminal": "터미널"})
+    other, setting = state["folders"][0]["items"]
+    other["custom_name"] = "플러그인"
+    setting["custom_name"] = "플러그인 설정"
+    setting["children"][0]["custom_name"] = "터미널 옵션"
+
+    out = mm.build_menu_yaml(state)
+
+    assert out == [{"name": "시스템", "list": [
+        {"uri": "system/plugin", "name": "플러그인"},
+        {"uri": "setting", "name": "플러그인 설정", "list": [{"plugin": "terminal", "name": "터미널 옵션"}]},
+    ]}]
+    # 다시 읽으면 바뀐 이름이 보인다
+    again = mm.build_editor_state(out, INSTALLED, {"terminal": "터미널"})["folders"][0]["items"]
+    assert again[0]["title"] == "플러그인"
+    assert again[1]["children"][0]["custom_name"] == "터미널 옵션"
+
+
+def test_blank_name_keeps_original_for_other_items():
+    yaml_list = [{"name": "시스템", "list": [{"uri": "system/plugin", "name": "플러그인 관리"}]}]
+    state = mm.build_editor_state(copy.deepcopy(yaml_list), INSTALLED)
+    state["folders"][0]["items"][0]["custom_name"] = "  "
+    assert mm.build_menu_yaml(state) == yaml_list
+
+
+def test_rename_link_category():
+    yaml_list = [{"name": "이미지", "uri": "support_site/site/imgur_paste"}]
+    state = mm.build_editor_state(copy.deepcopy(yaml_list), INSTALLED)
+    state["folders"][0]["name"] = "이미지 올리기"
+    assert mm.build_menu_yaml(state) == [{"name": "이미지 올리기", "uri": "support_site/site/imgur_paste"}]

@@ -89,6 +89,11 @@ function mmHideField(item, label) {
   return '<div class="mm-field"><span class="mm-field-label">메뉴</span><label class="mb-0" style="font-size:.85rem">'
     + '<input type="checkbox" class="mm-hide"' + (item.hidden ? ' checked' : '') + '> ' + (label || '메뉴에서 숨기기') + '</label></div>';
 }
+function mmNameField(value, original) {
+  return '<div class="mm-field"><span class="mm-field-label">표시 이름</span>'
+    + '<input class="form-control form-control-sm mm-name" value="' + mmEsc(value || '') + '">'
+    + (original ? '<span class="text-muted" style="font-size:.8rem">원래 이름: ' + mmEsc(original) + '</span>' : '') + '</div>';
+}
 function mmHead(shown, badges, uri, hidden) {
   return '<div class="mm-item-head"><span class="mm-grip">☰</span>'
     + '<span class="mm-label"><span class="mm-shown">' + mmEsc(shown) + '</span>' + (badges || '')
@@ -115,12 +120,13 @@ function mmItemHtml(item) {
   if (t === 'setting') {
     var skids = (item.children || []).map(mmItemHtml).join('');
     return mmWrap(id, 'mm-setting', item, mmHead(item.title, ' <span class="badge badge-primary" style="background:#6f42c1">확장 설정</span>', 'setting', item.hidden),
-      mmHideField(item, '확장 설정 전체 숨기기') + MOVE_FIELD
+      mmNameField(item.title, '') + mmHideField(item, '확장 설정 전체 숨기기') + MOVE_FIELD
       + '<div class="mm-field"><span class="mm-field-label">소분류</span><span class="text-muted" style="font-size:.8rem">각 플러그인의 설정 화면. 이 안에서만 순서 변경/숨기기</span></div>'
       + '<div class="mm-children mm-setting-children" data-kind="setting">' + skids + '</div>');
   }
   if (t === 'setting_plugin') {
-    return mmWrap(id, 'mm-setting-plugin', item, mmHead(item.title, '', item.plugin, item.hidden), mmHideField(item));
+    return mmWrap(id, 'mm-setting-plugin', item, mmHead(item.custom_name || item.title, '', item.plugin, item.hidden),
+      mmNameField(item.custom_name, item.title) + mmHideField(item));
   }
   if (t !== 'plugin' && item.uri === '-') {
     return mmWrap(id, 'mm-divider', item, mmHead('── 구분선 ──', '', '', false), MOVE_FIELD);
@@ -130,12 +136,7 @@ function mmItemHtml(item) {
   var badges = '';
   if (isPlugin && item.enabled === false) badges += ' <span class="badge badge-secondary">미사용</span>';
   if (!isPlugin) badges += ' <span class="badge badge-light">기본/링크</span>';
-  var body = '';
-  if (isPlugin) {
-    body += '<div class="mm-field"><span class="mm-field-label">표시 이름</span>'
-      + '<input class="form-control form-control-sm mm-name" value="' + mmEsc(item.custom_name || '') + '">'
-      + '<span class="text-muted" style="font-size:.8rem">원래 이름: ' + mmEsc(item.title) + '</span></div>';
-  }
+  var body = isPlugin ? mmNameField(item.custom_name, item.title) : mmNameField(item.title, '');
   body += mmHideField(item) + MOVE_FIELD;
   if (isPlugin && item.pages && item.pages.length) {
     body += '<div class="mm-field"><span class="mm-field-label">하위 페이지</span><span class="mm-pages">'
@@ -206,7 +207,7 @@ function mmRefresh() {
     }
   });
   mmPane(UNASSIGNED).find('.mm-name').prop('disabled', true).attr('placeholder', '대분류로 옮긴 뒤 변경');
-  $('#mm_panes .mm-pane').not('[data-folder="' + UNASSIGNED + '"]').find('.mm-name').prop('disabled', false).attr('placeholder', '표시 이름 (비우면 기본)');
+  $('#mm_panes .mm-pane').not('[data-folder="' + UNASSIGNED + '"]').find('.mm-name').prop('disabled', false).attr('placeholder', '표시 이름 (비우면 원래 이름)');
 }
 
 function mmSelect(fid) {
@@ -221,7 +222,8 @@ function mmSelect(fid) {
   if (fid === UNASSIGNED) {
     head = '<b>미분류</b><span class="text-muted" style="font-size:.8rem">menu.yaml 에 없는 플러그인 (FlaskFarm 이 \'미분류\'에 자동 표시)</span>';
   } else if (f.kind === 'link') {
-    head = '<b>' + mmEsc(f.name) + '</b><span class="text-muted" style="font-size:.8rem">상단 바로가기: ' + mmEsc(f.raw.uri || '') + ' (하위 메뉴 없음)</span>';
+    head = '<input class="form-control form-control-sm" id="mm_folder_name" value="' + mmEsc(f.name) + '" placeholder="바로가기 이름">'
+      + '<span class="text-muted" style="font-size:.8rem">상단 바로가기: ' + mmEsc(f.raw.uri || '') + ' (하위 메뉴 없음)</span>';
   } else {
     head = '<input class="form-control form-control-sm" id="mm_folder_name" value="' + mmEsc(f.name) + '" placeholder="대분류 이름">'
       + '<button class="btn btn-sm btn-outline-primary" id="mm_add_group">+ 중분류</button>'
@@ -303,7 +305,8 @@ function mmLoad() {
 function mmCollectItem($el) {
   var item = $.extend(true, {}, mmData($el));
   item.hidden = mmOwn($el, '.mm-hide').is(':checked');
-  if (item.type === 'plugin') item.custom_name = (mmOwn($el, '.mm-name').val() || '').trim();
+  var $name = mmOwn($el, '.mm-name');
+  if ($name.length) item.custom_name = ($name.val() || '').trim();
   if (item.type === 'group' || item.type === 'setting') {
     if (item.type === 'group') item.name = (mmOwn($el, '.mm-group-name').val() || '').trim();
     item.children = mmCollectList($el.children('.mm-item-body').children('.mm-children'));

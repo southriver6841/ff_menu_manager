@@ -34,8 +34,8 @@ def _plugin_state(uri, info, raw=None):
 
 def _other_state(raw):
     uri = str(raw.get("uri", ""))
-    return {"type": "other", "uri": uri, "title": raw.get("name") or uri, "raw": copy.deepcopy(raw),
-            "hidden": bool(raw.get("hidden"))}
+    return {"type": "other", "uri": uri, "title": raw.get("name") or uri, "custom_name": "",
+            "raw": copy.deepcopy(raw), "hidden": bool(raw.get("hidden"))}
 
 
 def _setting_state(raw, setting_plugins):
@@ -47,14 +47,15 @@ def _setting_state(raw, setting_plugins):
             name = str(child["plugin"])
             listed.add(name)
             children.append({"type": "setting_plugin", "plugin": name, "title": setting_plugins.get(name, name),
-                             "hidden": bool(child.get("hidden"))})
+                             "custom_name": child.get("name") or "", "hidden": bool(child.get("hidden"))})
         else:
             children.append(_other_state(child))
     for name in setting_plugins:  # FF 도 목록에 없는 확장 설정을 뒤에 붙인다
         if name not in listed:
-            children.append({"type": "setting_plugin", "plugin": name, "title": setting_plugins[name], "hidden": False})
+            children.append({"type": "setting_plugin", "plugin": name, "title": setting_plugins[name],
+                             "custom_name": "", "hidden": False})
     head = {k: v for k, v in raw.items() if k not in ("list", "hidden")}
-    state = {"type": "setting", "uri": SETTING_URI, "title": raw.get("name") or "확장 설정",
+    state = {"type": "setting", "uri": SETTING_URI, "title": raw.get("name") or "확장 설정", "custom_name": "",
              "hidden": bool(raw.get("hidden")), "raw": head, "children": children}
     if "list" not in raw:  # FF 기본: 모든 확장 설정 자동 표시. 바꾸지 않으면 list 를 쓰지 않는다
         state["implicit_order"] = [c["plugin"] for c in children]
@@ -128,27 +129,53 @@ def _item_yaml(item):
             raise ValueError("중분류 이름이 비어 있습니다.")
         return _with_hidden({"uri": GROUP_URI, "name": name, "list": children}, item.get("hidden"))
     if kind == "setting":
-        kids = item.get("children") or []
-        implicit = item.get("implicit_order")
-        if implicit is not None and not any(c.get("hidden") or c.get("type") != "setting_plugin" for c in kids)                 and [c.get("plugin") for c in kids] == implicit:
-            return _with_hidden(copy.deepcopy(item.get("raw") or {"uri": SETTING_URI}), item.get("hidden"))
-        children = []
-        for child in item.get("children") or []:
-            if child.get("type") == "setting_plugin":
-                children.append(_with_hidden({"plugin": child["plugin"]}, child.get("hidden")))
-            else:
-                children.append(_item_yaml(child))
-        raw = _with_hidden(copy.deepcopy(item.get("raw") or {"uri": SETTING_URI}), item.get("hidden"))
-        raw["list"] = children
-        return raw
-    return _with_hidden(copy.deepcopy(item.get("raw") or {"uri": item.get("uri", "")}), item.get("hidden"))
+        return _setting_yaml(item)
+    if item.get("uri") == "-":
+        return _with_hidden(copy.deepcopy(item.get("raw") or {"uri": "-"}), item.get("hidden"))
+    return _named_raw(item)
+
+
+def _named_raw(item):
+    """기본/링크/확장 설정: 새 이름이 있으면 바꾸고, 비어 있으면 원래 이름을 둔다."""
+    raw = copy.deepcopy(item.get("raw") or {"uri": item.get("uri", "")})
+    custom = str(item.get("custom_name") or "").strip()
+    if custom:
+        raw["name"] = custom
+    return _with_hidden(raw, item.get("hidden"))
+
+
+def _setting_child_yaml(child):
+    if child.get("type") != "setting_plugin":
+        return _item_yaml(child)
+    entry = {"plugin": child["plugin"]}
+    custom = str(child.get("custom_name") or "").strip()
+    if custom and custom != child.get("title"):
+        entry["name"] = custom
+    return _with_hidden(entry, child.get("hidden"))
+
+
+def _setting_yaml(item):
+    kids = item.get("children") or []
+    raw = _named_raw(dict(item, raw=item.get("raw") or {"uri": SETTING_URI}))
+    implicit = item.get("implicit_order")
+    untouched = not any(
+        c.get("hidden") or str(c.get("custom_name") or "").strip() or c.get("type") != "setting_plugin" for c in kids
+    )
+    if implicit is not None and untouched and [c.get("plugin") for c in kids] == implicit:
+        return raw  # list 없이 두어 FF 기본(모든 확장 설정 자동 표시) 유지
+    raw["list"] = [_setting_child_yaml(c) for c in kids]
+    return raw
 
 
 def build_menu_yaml(state):
     out = []
     for folder in state.get("folders") or []:
         if folder.get("kind") == "link":
-            out.append(copy.deepcopy(folder["raw"]))
+            raw = copy.deepcopy(folder["raw"])
+            name = str(folder.get("name") or "").strip()
+            if name:
+                raw["name"] = name
+            out.append(raw)
             continue
         items = [y for y in (_item_yaml(i) for i in folder.get("items") or []) if y is not None]
         if not items:
