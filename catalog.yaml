@@ -1,0 +1,14 @@
+# FlaskFarm 시스템 > 플러그인 > 전체 플러그인 목록 에 추가로 보여 줄 플러그인
+# (FF 기본 목록에 이미 있는 package_name 은 건너뜀)
+- name: "내 플러그인"
+  list:
+  - title: "메뉴 관리"
+    package_name: "ff_menu_manager"
+    developer: "southriver6841"
+    home: "https://github.com/southriver6841/ff_menu_manager"
+    description: "플러그인 메뉴 폴더/이동/이름 변경/숨기기, 사용·미사용 관리"
+  - title: "네이버 폐지 줍기"
+    package_name: "ff_naverpaper"
+    developer: "악휘라 & 스카J (southriver6841 수정본)"
+    home: "https://github.com/southriver6841/ff_naverpaper"
+    description: "네이버페이 포인트 링크 자동 적립 (중간 저장, 중지, 계정 격리 수정본)"

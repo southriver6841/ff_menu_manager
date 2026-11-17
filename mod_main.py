@@ -5,7 +5,7 @@ import traceback
 from flask import jsonify, render_template
 
 from .setup import *
-from . import menu_hook, menu_model, menu_store
+from . import catalog, menu_hook, menu_model, menu_store
 
 SELF_PACKAGE = "ff_menu_manager"
 
@@ -28,6 +28,29 @@ class ModuleMain(PluginModuleBase):
             if menu_hook.install(MenuManager, lambda: menu_store.read_menu_yaml(self._menu_path()), P.logger):
                 MenuManager.init_menu()
                 P.logger.info("[menu_manager] menu override installed")
+        except Exception as e:
+            P.logger.error(f"Exception:{str(e)}")
+            P.logger.error(traceback.format_exc())
+        self._install_catalog()
+
+    def _install_catalog(self):
+        """FF '전체 플러그인 목록'에 catalog.yaml 의 플러그인을 덧붙인다."""
+        try:
+            from system.setup import P as SystemP
+
+            plugin_module = next((m for m in (SystemP.module_list or []) if getattr(m, "name", "") == "plugin"), None)
+            if plugin_module is None:
+                P.logger.warning("[menu_manager] system plugin module not found; catalog not added")
+                return
+            _, PluginManager = _managers()
+            catalog_path = os.path.join(os.path.dirname(__file__), "catalog.yaml")
+            if catalog.install(
+                plugin_module,
+                lambda: menu_store.read_menu_yaml(catalog_path),
+                lambda: getattr(PluginManager, "all_package_list", {}) or {},
+                P.logger,
+            ):
+                P.logger.info("[menu_manager] my plugins added to FF plugin catalog")
         except Exception as e:
             P.logger.error(f"Exception:{str(e)}")
             P.logger.error(traceback.format_exc())

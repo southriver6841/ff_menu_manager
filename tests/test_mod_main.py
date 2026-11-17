@@ -50,7 +50,7 @@ def ff(monkeypatch, tmp_path):
             self.P = P
             self.name = name
 
-    logger = types.SimpleNamespace(info=lambda *a, **k: None, error=lambda *a, **k: None)
+    logger = types.SimpleNamespace(info=lambda *a, **k: None, error=lambda *a, **k: None, warning=lambda *a, **k: None)
     setup = types.ModuleType("ff_menu_manager.setup")
     setup.P = types.SimpleNamespace(logger=logger, package_name="ff_menu_manager")
     setup.F = types.SimpleNamespace(config={"menu_yaml_filepath": str(menu_path), "config_filepath": str(config_path), "path_data": str(tmp_path)})
@@ -134,3 +134,34 @@ def test_load_includes_plugin_sub_pages(ff):
 
     naver = [i for i in state["unassigned"] if i["uri"] == "ff_naverpaper"][0]
     assert naver["pages"] == ["설정", "로그"]
+
+
+def test_plugin_load_adds_my_plugins_to_ff_catalog(ff, monkeypatch):
+    """메뉴 관리가 로딩되면 → FF '전체 플러그인 목록' 맨 위에 '내 플러그인' 분류가 보인다."""
+
+    class FakeModulePlugin:
+        name = "plugin"
+
+        def __init__(self):
+            self.all_plugin_list = None
+
+        def process_command(self, command, arg1, arg2, arg3, req):
+            if command == "get_plugin_list_all":
+                if self.all_plugin_list is None:
+                    self.all_plugin_list = [{"name": "기본", "list": [{"package_name": "terminal", "title": "터미널"}]}]
+                return {"ret": "success", "data": self.all_plugin_list}
+            return {"ret": "success"}
+
+    plugin_module = FakeModulePlugin()
+    system_setup = types.ModuleType("system.setup")
+    system_setup.P = types.SimpleNamespace(module_list=[types.SimpleNamespace(name="home"), plugin_module])
+    monkeypatch.setitem(sys.modules, "system", types.ModuleType("system"))
+    monkeypatch.setitem(sys.modules, "system.setup", system_setup)
+
+    ff.main.plugin_load()
+    ret = plugin_module.process_command("get_plugin_list_all", None, None, None, None)
+
+    assert ret["data"][0]["name"] == "내 플러그인"
+    packages = [p["package_name"] for p in ret["data"][0]["list"]]
+    assert packages == ["ff_menu_manager", "ff_naverpaper"]
+    assert ret["data"][0]["list"][0]["home"] == "https://github.com/southriver6841/ff_menu_manager"
