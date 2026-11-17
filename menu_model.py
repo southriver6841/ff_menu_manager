@@ -31,13 +31,15 @@ def _item_state(raw, installed):
         "enabled": bool(info.get("enabled", True)),
         "custom_name": raw.get("name") or "",
         "hidden": bool(raw.get("hidden")),
+        "pages": list(info.get("pages") or []),
         "raw": copy.deepcopy(raw),
     }
 
 
 def _plugin_state(uri, info):
     return {"type": "plugin", "uri": uri, "title": info.get("title") or uri,
-            "enabled": bool(info.get("enabled", True)), "custom_name": "", "hidden": False, "raw": {"uri": uri}}
+            "enabled": bool(info.get("enabled", True)), "custom_name": "", "hidden": False,
+            "pages": list(info.get("pages") or []), "raw": {"uri": uri}}
 
 
 def build_editor_state(menu_yaml, installed):

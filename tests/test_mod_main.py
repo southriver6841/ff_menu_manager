@@ -123,3 +123,14 @@ def test_set_enabled_updates_config_and_blocks_self(ff):
 
     plugins = ff.main.process_command("load", None, None, None, None)["data"]["plugins"]
     assert {p["name"]: p["enabled"] for p in plugins}["ff_naverpaper"] is False
+
+
+def test_load_includes_plugin_sub_pages(ff):
+    import sys
+    pm = sys.modules["framework.init_plugin"].PluginManager
+    pm.plugin_menus["ff_naverpaper"]["menu"]["list"] = [{"uri": "main/setting", "name": "설정"}, {"uri": "log", "name": "로그"}]
+
+    state = ff.main.process_command("load", None, None, None, None)["data"]["state"]
+
+    naver = [i for i in state["unassigned"] if i["uri"] == "ff_naverpaper"][0]
+    assert naver["pages"] == ["설정", "로그"]

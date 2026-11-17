@@ -189,3 +189,14 @@ def test_set_except_list_rejects_unsafe_names():
         pass
     else:
         raise AssertionError("names with quotes/newlines must be rejected")
+
+
+def test_plugin_pages_are_passed_to_editor():
+    """아코디언에 플러그인 하위 페이지(설정/계정 등)를 보여 주기 위해 pages 를 넘긴다."""
+    installed = {"ff_naverpaper": {"title": "네이버 폐지줍기", "pages": ["설정", "계정"]}, "bot": {"title": "봇"}}
+    state = mm.build_editor_state([{"name": "유틸", "list": [{"uri": "ff_naverpaper"}]}], installed)
+
+    assert state["folders"][0]["items"][0]["pages"] == ["설정", "계정"]
+    assert state["unassigned"][0]["pages"] == []
+    # pages 는 화면용일 뿐 menu.yaml 에 쓰지 않는다
+    assert mm.build_menu_yaml(state) == [{"name": "유틸", "list": [{"uri": "ff_naverpaper"}]}]

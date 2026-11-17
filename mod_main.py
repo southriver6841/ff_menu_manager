@@ -76,6 +76,7 @@ class ModuleMain(PluginModuleBase):
                 "loaded": name in menus,
                 "status": (packages.get(name) or {}).get("status", ""),
                 "locked": name == SELF_PACKAGE,
+                "pages": [str(p.get("name") or p.get("uri") or "") for p in (menu.get("list") or []) if isinstance(p, dict)],
             }
         return installed
 

@@ -1,140 +1,253 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-  .mm-toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
-  .mm-folder { margin-bottom:12px; }
-  .mm-folder .card-header { display:flex; align-items:center; gap:8px; padding:6px 10px; }
-  .mm-folder .card-header input { max-width:260px; }
-  .mm-handle { cursor:grab; color:#888; user-select:none; padding:0 4px; }
-  .mm-items { min-height:42px; padding:6px; }
-  .mm-item { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:6px 8px; border:1px solid rgba(128,128,128,.25); border-radius:4px; margin-bottom:4px; background:rgba(128,128,128,.05); }
-  .mm-item.mm-hidden { opacity:.5; }
-  .mm-item .mm-title { min-width:140px; font-weight:bold; }
-  .mm-item .mm-uri { color:#888; font-size:.8rem; }
-  .mm-item .mm-name { max-width:220px; }
-  .mm-item .mm-move { max-width:160px; }
-  .mm-empty { color:#888; font-size:.85rem; padding:8px; }
-  .mm-ghost { opacity:.4; }
+  .mm-toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  /* 상단 메뉴바와 같은 모양의 대메뉴 탭 */
+  .mm-bar { background:#343a40; border-radius:6px 6px 0 0; padding:6px 6px 0; }
+  .mm-tabs { display:flex; flex-wrap:wrap; gap:2px; list-style:none; margin:0; padding:0; }
+  .mm-tab { position:relative; }
+  #mm_tabs .mm-tab > a { display:block; padding:8px 14px; color:rgba(255,255,255,.65); border-radius:4px 4px 0 0; cursor:pointer; user-select:none; white-space:nowrap; text-decoration:none !important; }
+  #mm_tabs .mm-tab > a:hover { color:#fff; }
+  #mm_tabs .mm-tab.active > a { background:#fff; color:#212529; font-weight:bold; }
+  .mm-tab .mm-count { font-size:.7rem; margin-left:4px; opacity:.7; }
+  .mm-tab.mm-tab-unassigned > a { font-style:italic; }
+  #mm_tabs .mm-tab.mm-tab-add > a { color:#8fd19e; }
+  .mm-tab-drop { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+  .mm-tab-drop > * { display:none !important; }
+  body.mm-dragging-item .mm-tab-drop { pointer-events:auto; }
+  body.mm-dragging-item .mm-tab:not(.active):not(.mm-tab-add):not(.mm-tab-link) > a { outline:1px dashed #8fd19e; }
+  #mm_tabs .mm-tab.mm-drop-hover > a { background:#28a745 !important; color:#fff !important; }
+  /* 하위 메뉴 패널: 드롭다운 모양 */
+  .mm-panel { border:1px solid rgba(0,0,0,.15); border-top:0; border-radius:0 0 6px 6px; padding:10px; background:#fff; }
+  .mm-panel-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+  .mm-panel-head input { max-width:260px; }
+  .mm-pane { display:none; }
+  .mm-pane.active { display:block; }
+  .mm-items { min-height:46px; }
+  .mm-item { border:1px solid rgba(0,0,0,.1); border-radius:4px; margin-bottom:4px; background:#fff; }
+  .mm-item-head { display:flex; align-items:center; gap:8px; padding:8px 10px; cursor:grab; user-select:none; }
+  .mm-item-head:hover { background:#f1f3f5; }
+  .mm-item.open > .mm-item-head { background:#e9ecef; }
+  .mm-item.mm-hidden .mm-shown { text-decoration:line-through; opacity:.5; }
+  .mm-grip { color:#adb5bd; }
+  .mm-label { font-weight:bold; font-size:.9rem; flex:1; min-width:0; }
+  .mm-uri { color:#888; font-size:.75rem; font-weight:normal; margin-left:6px; }
+  .mm-chevron { color:#888; font-size:1.3rem; line-height:1; transition:transform .15s; }
+  .mm-item.open .mm-chevron { transform:rotate(90deg); }
+  .mm-item-body { display:none; padding:10px 12px 12px 32px; border-top:1px solid rgba(0,0,0,.08); cursor:default; }
+  .mm-item.open > .mm-item-body { display:block; }
+  .mm-field { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+  .mm-field > .mm-field-label { width:80px; color:#666; font-size:.85rem; }
+  .mm-field .mm-name { max-width:240px; }
+  .mm-field .mm-move { max-width:200px; }
+  .mm-pages { display:flex; flex-wrap:wrap; gap:4px; }
+  .mm-pages .badge { font-weight:normal; }
+  .mm-item.mm-divider .mm-item-head { color:#adb5bd; font-size:.8rem; }
+  .mm-empty { color:#888; font-size:.85rem; padding:12px; text-align:center; }
+  .mm-ghost { opacity:.35; background:#d4edda !important; }
+  .mm-tab.mm-ghost > a { background:#28a745; color:#fff; }
 </style>
 
 <div class="mm-toolbar">
-  <button class="btn btn-sm btn-outline-primary" id="mm_add_folder">+ 새 폴더</button>
   <button class="btn btn-sm btn-primary" id="mm_save">저장</button>
   <button class="btn btn-sm btn-outline-secondary" id="mm_reload">다시 불러오기</button>
 </div>
 <div class="alert alert-info py-2" style="font-size:.85rem">
-  ☰ 를 끌어서 폴더 순서와 메뉴 위치를 바꿉니다. 휴대폰에서는 각 항목의 "폴더 이동"을 쓰세요.
-  플러그인 이름은 폴더 안에서만 바꿀 수 있습니다. 저장하면 기존 menu.yaml 은 자동 백업됩니다.
+  <b>대메뉴</b>: 탭을 끌어서 순서를 바꿉니다. <b>하위 메뉴</b>: 줄을 끌어서 순서를 바꾸고, 다른 탭 위에 놓으면 그 대메뉴로 옮겨집니다.
+  휴대폰에서는 각 줄의 "이동"을 쓰세요. 저장하면 기존 menu.yaml 은 자동 백업됩니다.
 </div>
 
-<div id="mm_folders"></div>
-
-<div class="card mm-folder" id="mm_unassigned_card">
-  <div class="card-header"><b>미분류</b><span class="text-muted" style="font-size:.8rem">menu.yaml 에 없는 플러그인 (FlaskFarm 이 '미분류'에 자동 표시)</span></div>
-  <div class="mm-items" id="mm_unassigned" data-folder="__unassigned__"></div>
+<div class="mm-bar"><ul class="mm-tabs" id="mm_tabs"></ul></div>
+<div class="mm-panel">
+  <div class="mm-panel-head" id="mm_head"></div>
+  <div id="mm_panes"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script type="text/javascript">
-var mmItems = {};      // id -> item 데이터
-var mmFolders = {};    // id -> folder 데이터 (kind, raw 등)
+var UNASSIGNED = '__unassigned__';
+var mmItems = {};    // item id -> 데이터
+var mmFolders = {};  // folder id -> {kind, name, raw}
 var mmSeq = 0;
-var mmHiddenFolder = '숨긴 메뉴';
+var mmActive = null;
 
-function mmEsc(text) { return $('<div>').text(text == null ? '' : String(text)).html(); }
-function mmId(prefix) { mmSeq += 1; return prefix + mmSeq; }
+function mmEsc(t) { return $('<div>').text(t == null ? '' : String(t)).html(); }
+function mmId(p) { mmSeq += 1; return p + mmSeq; }
+function mmPane(fid) { return $('#mm_panes > .mm-pane[data-folder="' + fid + '"]'); }
+function mmFolderName(fid) { return fid === UNASSIGNED ? '미분류' : (mmFolders[fid].name || '(이름 없음)'); }
 
-function mmFolderOptions(currentId) {
-  var html = '<option value="">폴더 이동…</option>';
-  $('#mm_folders > .mm-folder[data-kind="folder"]').each(function() {
-    var id = $(this).data('id');
-    if (id === currentId) return;
-    var name = $(this).find('.mm-folder-name').val() || '(이름 없음)';
-    html += '<option value="' + id + '">' + mmEsc(name) + '</option>';
-  });
-  if (currentId !== '__unassigned__') html += '<option value="__unassigned__">미분류</option>';
-  return html;
-}
-
-function mmRefreshMoveSelects() {
-  $('.mm-item').each(function() {
-    var folderId = $(this).closest('.mm-items').data('folder');
-    $(this).find('.mm-move').html(mmFolderOptions(folderId));
-  });
-  $('.mm-items').each(function() {
-    var empty = $(this).children('.mm-item').length === 0;
-    $(this).children('.mm-empty').remove();
-    if (empty) $(this).append('<div class="mm-empty">여기로 끌어다 놓으세요</div>');
-  });
-  $('.mm-items[data-folder="__unassigned__"] .mm-name').prop('disabled', true).attr('placeholder', '폴더로 옮긴 뒤 변경');
-  $('.mm-items:not([data-folder="__unassigned__"]) .mm-name').prop('disabled', false).attr('placeholder', '표시 이름 (비우면 기본)');
-}
-
+// ---- 렌더링 -----------------------------------------------------------------
 function mmItemHtml(item) {
   var id = mmId('i');
   mmItems[id] = item;
+  var moveField = '<div class="mm-field"><span class="mm-field-label">이동</span><select class="form-control form-control-sm mm-move"></select></div>';
+  if (item.type !== 'plugin' && item.uri === '-') {
+    return '<div class="mm-item mm-divider" data-id="' + id + '">'
+      + '<div class="mm-item-head"><span class="mm-grip">☰</span><span class="mm-label">── 구분선 ──</span><span class="mm-chevron">&#x203A;</span></div>'
+      + '<div class="mm-item-body">' + moveField + '</div></div>';
+  }
   var isPlugin = item.type === 'plugin';
+  var shown = (isPlugin && item.custom_name) ? item.custom_name : (item.title || item.uri);
   var badges = '';
   if (isPlugin && item.enabled === false) badges += ' <span class="badge badge-secondary">미사용</span>';
   if (!isPlugin) badges += ' <span class="badge badge-light">기본/링크</span>';
-  var nameInput = isPlugin
-    ? '<input class="form-control form-control-sm mm-name" value="' + mmEsc(item.custom_name || '') + '">'
-    : '';
+  badges += ' <span class="badge badge-dark mm-hidden-badge"' + (item.hidden ? '' : ' style="display:none"') + '>숨김</span>';
+  var body = '';
+  if (isPlugin) {
+    body += '<div class="mm-field"><span class="mm-field-label">표시 이름</span>'
+      + '<input class="form-control form-control-sm mm-name" value="' + mmEsc(item.custom_name || '') + '">'
+      + '<span class="text-muted" style="font-size:.8rem">원래 이름: ' + mmEsc(item.title) + '</span></div>';
+  }
+  body += '<div class="mm-field"><span class="mm-field-label">메뉴</span>'
+    + '<label class="mb-0" style="font-size:.85rem"><input type="checkbox" class="mm-hide"' + (item.hidden ? ' checked' : '') + '> 메뉴에서 숨기기</label></div>';
+  body += moveField;
+  if (isPlugin && item.pages && item.pages.length) {
+    body += '<div class="mm-field"><span class="mm-field-label">하위 페이지</span><span class="mm-pages">'
+      + item.pages.map(function(p) { return '<span class="badge badge-light">' + mmEsc(p) + '</span>'; }).join('') + '</span></div>';
+  }
   return '<div class="mm-item' + (item.hidden ? ' mm-hidden' : '') + '" data-id="' + id + '">'
-    + '<span class="mm-handle">☰</span>'
-    + '<span class="mm-title">' + mmEsc(item.title || item.uri) + badges + '<br><span class="mm-uri">' + mmEsc(item.uri) + '</span></span>'
-    + nameInput
-    + '<label class="mb-0" style="font-size:.85rem"><input type="checkbox" class="mm-hide"' + (item.hidden ? ' checked' : '') + '> 메뉴 숨기기</label>'
-    + '<select class="form-control form-control-sm mm-move"></select>'
-    + '</div>';
+    + '<div class="mm-item-head"><span class="mm-grip">☰</span>'
+    + '<span class="mm-label"><span class="mm-shown">' + mmEsc(shown) + '</span>' + badges + '<span class="mm-uri">' + mmEsc(item.uri) + '</span></span>'
+    + '<span class="mm-chevron">&#x203A;</span></div>'
+    + '<div class="mm-item-body">' + body + '</div></div>';
 }
 
-function mmFolderHtml(folder) {
-  var id = mmId('f');
-  mmFolders[id] = folder;
-  if (folder.kind === 'link') {
-    return '<div class="card mm-folder" data-id="' + id + '" data-kind="link">'
-      + '<div class="card-header"><span class="mm-handle mm-folder-handle">☰</span>'
-      + '<b>' + mmEsc(folder.name) + '</b><span class="badge badge-light">상단 바로가기</span>'
-      + '<span class="text-muted" style="font-size:.8rem">' + mmEsc(folder.raw.uri || '') + '</span></div></div>';
-  }
-  var html = '<div class="card mm-folder" data-id="' + id + '" data-kind="folder">'
-    + '<div class="card-header"><span class="mm-handle mm-folder-handle">☰</span>'
-    + '<input class="form-control form-control-sm mm-folder-name" value="' + mmEsc(folder.name) + '" placeholder="폴더 이름">'
-    + '<button class="btn btn-sm btn-outline-danger mm-del-folder ml-auto">폴더 삭제</button></div>'
-    + '<div class="mm-items" data-folder="' + id + '">';
-  (folder.items || []).forEach(function(item) { html += mmItemHtml(item); });
+function mmTabHtml(fid) {
+  var f = fid === UNASSIGNED ? null : mmFolders[fid];
+  var cls = 'mm-tab';
+  if (fid === UNASSIGNED) cls += ' mm-tab-unassigned';
+  if (f && f.kind === 'link') cls += ' mm-tab-link';
+  var label = mmEsc(mmFolderName(fid)) + (f && f.kind === 'link' ? ' ↗' : '');
+  return '<li class="' + cls + '" data-folder="' + fid + '"><a>' + label + '<span class="mm-count"></span></a>'
+    + (f && f.kind === 'link' ? '' : '<div class="mm-tab-drop" data-folder="' + fid + '"></div>') + '</li>';
+}
+
+function mmPaneHtml(fid, items) {
+  var html = '<div class="mm-pane" data-folder="' + fid + '"><div class="mm-items" data-folder="' + fid + '">';
+  (items || []).forEach(function(item) { html += mmItemHtml(item); });
   return html + '</div></div>';
 }
 
-function mmBindSortable() {
-  var foldersEl = document.getElementById('mm_folders');
-  if (!foldersEl._mmSortable) {
-    foldersEl._mmSortable = Sortable.create(foldersEl, {
-      handle: '.mm-folder-handle', animation: 150, ghostClass: 'mm-ghost', onEnd: mmRefreshMoveSelects
-    });
-  }
-  document.querySelectorAll('.mm-items').forEach(function(el) {
-    if (el._mmSortable) return;
-    el._mmSortable = Sortable.create(el, {
-      group: 'mm-items', handle: '.mm-handle', animation: 150, ghostClass: 'mm-ghost', onEnd: mmRefreshMoveSelects
-    });
-  });
+function mmAddFolder(folder, prepend) {
+  var fid = mmId('f');
+  mmFolders[fid] = folder;
+  var $tab = $(mmTabHtml(fid));
+  if (prepend) $('#mm_tabs').prepend($tab); else $('#mm_tabs .mm-tab-unassigned').before($tab);
+  $('#mm_panes').append(mmPaneHtml(fid, folder.kind === 'link' ? [] : folder.items));
+  return fid;
 }
 
 function mmRender(data) {
   mmItems = {}; mmFolders = {};
-  mmHiddenFolder = data.hidden_folder || mmHiddenFolder;
-  var html = '';
-  (data.state.folders || []).forEach(function(folder) { html += mmFolderHtml(folder); });
-  $('#mm_folders').html(html);
-  var un = '';
-  (data.state.unassigned || []).forEach(function(item) { un += mmItemHtml(item); });
-  $('#mm_unassigned').html(un);
+  $('#mm_tabs').html(mmTabHtml(UNASSIGNED) + '<li class="mm-tab mm-tab-add"><a id="mm_add_folder">+ 대메뉴</a></li>');
+  $('#mm_panes').html(mmPaneHtml(UNASSIGNED, data.state.unassigned));
+  (data.state.folders || []).forEach(function(f) { mmAddFolder(f, false); });
   mmBindSortable();
-  mmRefreshMoveSelects();
+  var first = $('#mm_tabs .mm-tab').not('.mm-tab-add').first().data('folder');
+  mmSelect(mmActive && $('#mm_tabs .mm-tab[data-folder="' + mmActive + '"]').length ? mmActive : first);
 }
 
+function mmRefresh() {
+  // 탭 개수, 이동 드롭다운, 빈 목록 안내, 미분류 이름 입력 잠금
+  $('#mm_tabs .mm-tab').each(function() {
+    var fid = $(this).data('folder');
+    if (!fid) return;
+    var n = mmPane(fid).find('.mm-item').length;
+    $(this).find('.mm-count').text(mmFolders[fid] && mmFolders[fid].kind === 'link' ? '' : '(' + n + ')');
+    $(this).children('a').contents().first().replaceWith(document.createTextNode(mmFolderName(fid) + (mmFolders[fid] && mmFolders[fid].kind === 'link' ? ' ↗' : '')));
+  });
+  var opts = function(current) {
+    var html = '<option value="">이동…</option>';
+    $('#mm_tabs .mm-tab').each(function() {
+      var fid = $(this).data('folder');
+      if (!fid || fid === current || (mmFolders[fid] && mmFolders[fid].kind === 'link')) return;
+      html += '<option value="' + fid + '">' + mmEsc(mmFolderName(fid)) + '</option>';
+    });
+    return html;
+  };
+  $('.mm-items').each(function() {
+    var fid = $(this).data('folder');
+    $(this).find('.mm-move').html(opts(fid));
+    $(this).children('.mm-empty').remove();
+    if ($(this).children('.mm-item').length === 0) $(this).append('<div class="mm-empty">비어 있습니다. 다른 탭의 메뉴를 이 탭 위로 끌어다 놓으세요.</div>');
+  });
+  mmPane(UNASSIGNED).find('.mm-name').prop('disabled', true).attr('placeholder', '대메뉴로 옮긴 뒤 변경');
+  $('#mm_panes .mm-pane').not('[data-folder="' + UNASSIGNED + '"]').find('.mm-name').prop('disabled', false).attr('placeholder', '표시 이름 (비우면 기본)');
+}
+
+function mmSelect(fid) {
+  if (!fid) return;
+  mmActive = fid;
+  $('#mm_tabs .mm-tab').removeClass('active');
+  $('#mm_tabs .mm-tab[data-folder="' + fid + '"]').addClass('active');
+  $('#mm_panes .mm-pane').removeClass('active');
+  mmPane(fid).addClass('active');
+  var f = mmFolders[fid];
+  var head;
+  if (fid === UNASSIGNED) {
+    head = '<b>미분류</b><span class="text-muted" style="font-size:.8rem">menu.yaml 에 없는 플러그인 (FlaskFarm 이 \'미분류\'에 자동 표시)</span>';
+  } else if (f.kind === 'link') {
+    head = '<b>' + mmEsc(f.name) + '</b><span class="text-muted" style="font-size:.8rem">상단 바로가기: ' + mmEsc(f.raw.uri || '') + ' (하위 메뉴 없음)</span>';
+  } else {
+    head = '<input class="form-control form-control-sm" id="mm_folder_name" value="' + mmEsc(f.name) + '" placeholder="대메뉴 이름">'
+      + '<button class="btn btn-sm btn-outline-danger ml-auto" id="mm_del_folder">대메뉴 삭제</button>';
+  }
+  $('#mm_head').html(head);
+  mmRefresh();
+}
+
+// ---- 드래그 ------------------------------------------------------------------
+function mmItemSortable(el) {
+  if (el._mmSortable) return;
+  el._mmSortable = Sortable.create(el, {
+    group: 'mm-items', animation: 150, ghostClass: 'mm-ghost', draggable: '.mm-item',
+    forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
+    filter: '.mm-item-body', preventOnFilter: false,
+    onStart: function() { $('body').addClass('mm-dragging-item'); },
+    onMove: function(evt) {
+      $('.mm-tab').removeClass('mm-drop-hover');
+      if ($(evt.to).hasClass('mm-tab-drop')) $(evt.to).closest('.mm-tab').addClass('mm-drop-hover');
+    },
+    onEnd: function() { $('body').removeClass('mm-dragging-item'); $('.mm-tab').removeClass('mm-drop-hover'); mmRefresh(); }
+  });
+}
+
+function mmTabDropSortable(el) {
+  if (el._mmSortable) return;
+  el._mmSortable = Sortable.create(el, {
+    group: { name: 'mm-items', pull: false, put: true }, sort: false, animation: 0,
+    onAdd: function(evt) {
+      var fid = $(el).data('folder');
+      var item = evt.item;
+      // Sortable 의 drop 처리가 끝난 뒤 옮겨야 다음 드래그가 정상 동작한다
+      setTimeout(function() {
+        $(item).removeAttr('style').removeClass('open');
+        mmPane(fid).children('.mm-items').append(item);
+        mmRefresh();
+      }, 0);
+    }
+  });
+
+}
+
+function mmBindSortable() {
+  var tabs = document.getElementById('mm_tabs');
+  if (!tabs._mmSortable) {
+    tabs._mmSortable = Sortable.create(tabs, {
+      animation: 150, ghostClass: 'mm-ghost', draggable: '.mm-tab:not(.mm-tab-add)', direction: 'horizontal',
+      forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
+      filter: '.mm-tab-add', onEnd: function() {
+        // '+ 대메뉴' 는 항상 맨 끝
+        $('#mm_tabs .mm-tab-add').appendTo('#mm_tabs');
+        mmRefresh();
+      }
+    });
+  }
+  document.querySelectorAll('#mm_panes .mm-items').forEach(mmItemSortable);
+  document.querySelectorAll('#mm_tabs .mm-tab-drop').forEach(mmTabDropSortable);
+}
+
+// ---- 불러오기 / 저장 --------------------------------------------------------
 function mmLoad() {
   globalSendCommand('load', null, null, null, function(ret) {
     if (ret.ret !== 'success') { notify(ret.msg || '불러오기 실패', 'warning'); return; }
@@ -151,52 +264,81 @@ function mmCollectItem($el) {
 
 function mmCollectState() {
   var state = { folders: [], unassigned: [] };
-  $('#mm_folders > .mm-folder').each(function() {
-    var folder = mmFolders[$(this).data('id')];
-    if ($(this).data('kind') === 'link') { state.folders.push({ kind: 'link', name: folder.name, raw: folder.raw }); return; }
+  $('#mm_tabs .mm-tab').each(function() {
+    var fid = $(this).data('folder');
+    if (!fid) return;
     var items = [];
-    $(this).find('.mm-items > .mm-item').each(function() { items.push(mmCollectItem($(this))); });
-    state.folders.push({ kind: 'folder', name: ($(this).find('.mm-folder-name').val() || '').trim(), items: items });
-  });
-  $('#mm_unassigned > .mm-item').each(function() {
-    var item = mmCollectItem($(this));
-    item.custom_name = '';
-    state.unassigned.push(item);
+    mmPane(fid).find('.mm-items > .mm-item').each(function() { items.push(mmCollectItem($(this))); });
+    if (fid === UNASSIGNED) {
+      items.forEach(function(i) { i.custom_name = ''; });
+      state.unassigned = state.unassigned.concat(items);
+      return;
+    }
+    var f = mmFolders[fid];
+    if (f.kind === 'link') state.folders.push({ kind: 'link', name: f.name, raw: f.raw });
+    else state.folders.push({ kind: 'folder', name: (f.name || '').trim(), items: items });
   });
   return state;
 }
 
-$('body').on('click', '#mm_add_folder', function(e) {
+// ---- 이벤트 ------------------------------------------------------------------
+$('body').on('click', '#mm_tabs .mm-tab:not(.mm-tab-add) > a', function(e) {
   e.preventDefault();
-  $('#mm_folders').prepend(mmFolderHtml({ kind: 'folder', name: '새 폴더', items: [] }));
-  mmBindSortable();
-  mmRefreshMoveSelects();
-  $('#mm_folders .mm-folder-name').first().focus().select();
+  mmSelect($(this).parent().data('folder'));
 });
 
-$('body').on('click', '.mm-del-folder', function(e) {
+$('body').on('click', '#mm_add_folder', function(e) {
   e.preventDefault();
-  var $folder = $(this).closest('.mm-folder');
-  var others = $folder.find('.mm-item').filter(function() { return mmItems[$(this).data('id')].type !== 'plugin'; });
-  if (others.length > 0) { notify('기본 메뉴/링크가 있는 폴더는 삭제할 수 없습니다. 먼저 다른 폴더로 옮겨 주세요.', 'warning'); return; }
-  $folder.find('.mm-item').appendTo('#mm_unassigned');
-  $folder.remove();
-  mmRefreshMoveSelects();
+  var fid = mmAddFolder({ kind: 'folder', name: '새 메뉴', items: [] }, false);
+  mmBindSortable();
+  mmSelect(fid);
+  $('#mm_folder_name').focus().select();
+});
+
+$('body').on('input', '#mm_folder_name', function() {
+  mmFolders[mmActive].name = $(this).val();
+  mmRefresh();
+});
+
+$('body').on('click', '#mm_del_folder', function(e) {
+  e.preventDefault();
+  var fid = mmActive;
+  var $items = mmPane(fid).find('.mm-item');
+  var others = $items.filter(function() { return mmItems[$(this).data('id')].type !== 'plugin'; });
+  if (others.length > 0) { notify('기본 메뉴/링크가 있는 대메뉴는 삭제할 수 없습니다. 먼저 다른 대메뉴로 옮겨 주세요.', 'warning'); return; }
+  $items.appendTo(mmPane(UNASSIGNED).children('.mm-items'));
+  $('#mm_tabs .mm-tab[data-folder="' + fid + '"]').remove();
+  mmPane(fid).remove();
+  delete mmFolders[fid];
+  mmSelect(UNASSIGNED);
 });
 
 $('body').on('change', '.mm-move', function() {
   var target = $(this).val();
   if (!target) return;
+  $(this).closest('.mm-item').appendTo(mmPane(target).children('.mm-items'));
+  mmRefresh();
+});
+
+$('body').on('click', '.mm-item-head', function() {
   var $item = $(this).closest('.mm-item');
-  var $dest = target === '__unassigned__' ? $('#mm_unassigned') : $('.mm-items[data-folder="' + target + '"]');
-  $item.appendTo($dest);
-  mmRefreshMoveSelects();
+  var open = !$item.hasClass('open');
+  $item.closest('.mm-items').children('.mm-item.open').not($item).removeClass('open');
+  $item.toggleClass('open', open);
 });
 
 $('body').on('change', '.mm-hide', function() {
-  $(this).closest('.mm-item').toggleClass('mm-hidden', $(this).is(':checked'));
+  var hidden = $(this).is(':checked');
+  var $item = $(this).closest('.mm-item');
+  $item.toggleClass('mm-hidden', hidden);
+  $item.find('.mm-hidden-badge').toggle(hidden);
 });
-$('body').on('input', '.mm-folder-name', mmRefreshMoveSelects);
+
+$('body').on('input', '.mm-name', function() {
+  var $item = $(this).closest('.mm-item');
+  var data = mmItems[$item.data('id')];
+  $item.find('.mm-shown').text(($(this).val() || '').trim() || data.title || data.uri);
+});
 
 $('body').on('click', '#mm_save', function(e) {
   e.preventDefault();
