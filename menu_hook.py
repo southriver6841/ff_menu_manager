@@ -10,7 +10,7 @@ _MARK = "_ff_menu_manager_original_init_menu"
 logger = logging.getLogger(__name__)
 
 
-def install(manager_cls, read_menu_yaml, log=None):
+def install(manager_cls, read_menu_yaml, log=None, get_plugin_menus=None):
     """manager_cls.init_menu 가 호출될 때마다 apply_overrides 를 적용하도록 교체한다."""
     log = log or logger
     if getattr(manager_cls, _MARK, None) is not None:
@@ -20,7 +20,8 @@ def install(manager_cls, read_menu_yaml, log=None):
     def init_menu(cls):
         original()
         try:
-            cls.menu_map = menu_model.apply_overrides(cls.menu_map, read_menu_yaml())
+            plugin_menus = get_plugin_menus() if get_plugin_menus else {}
+            cls.menu_map = menu_model.apply_overrides(cls.menu_map, read_menu_yaml(), plugin_menus)
         except Exception as e:  # 메뉴가 통째로 사라지는 일은 없어야 한다
             log.error(f"[menu_manager] override failed: {e}")
 

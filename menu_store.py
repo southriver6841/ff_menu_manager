@@ -7,9 +7,9 @@ from datetime import datetime
 import yaml
 
 try:
-    from . import menu_model
+    from . import config_except
 except ImportError:  # 테스트에서 단독 import
-    import menu_model
+    import config_except
 
 MAX_BACKUPS = 10
 
@@ -64,19 +64,19 @@ def _read_text(path):
 
 
 def read_except_list(config_path):
-    return menu_model.parse_except_list(_read_text(config_path))
+    return config_except.parse_except_list(_read_text(config_path))
 
 
 def set_plugins_enabled(config_path, changes):
     """changes: {package_name: enabled(bool)}. 변경 후의 제외 목록을 돌려준다."""
     text = _read_text(config_path)
-    excluded = set(menu_model.parse_except_list(text))
+    excluded = set(config_except.parse_except_list(text))
     for name, enabled in changes.items():
         if enabled:
             excluded.discard(name)
         else:
             excluded.add(name)
-    new_text = menu_model.set_except_list(text, excluded)
+    new_text = config_except.set_except_list(text, excluded)
     if new_text != text:
         _backup(config_path)
         _write_atomic(config_path, new_text)

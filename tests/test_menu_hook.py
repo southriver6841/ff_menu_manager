@@ -55,3 +55,17 @@ def test_broken_yaml_reader_keeps_original_menu():
     manager.init_menu()
 
     assert [i["uri"] for i in manager.menu_map[0]["list"]] == ["ff_naverpaper", "terminal"]
+
+
+def test_hook_builds_group_submenu_with_plugin_menus():
+    manager = _fake_manager()
+    yaml_list = [{"name": "유틸", "list": [{"uri": "mm_group", "name": "도구", "list": [{"uri": "ff_naverpaper"}, {"uri": "terminal"}]}]}]
+    plugin_menus = {"ff_naverpaper": {"menu": {"uri": "ff_naverpaper", "name": "네이버 폐지줍기"}},
+                    "terminal": {"menu": {"uri": "terminal", "name": "터미널"}}}
+    menu_hook.install(manager, lambda: yaml_list, get_plugin_menus=lambda: plugin_menus)
+
+    manager.init_menu()
+
+    group = manager.menu_map[0]["list"][0]
+    assert group["uri"] == "setting" and group["name"] == "도구"
+    assert [c["uri"] for c in group["list"]] == ["ff_naverpaper", "terminal"]

@@ -2,7 +2,7 @@
 {% block content %}
 <style>
   .mm-toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
-  /* 상단 메뉴바와 같은 모양의 대메뉴 탭 */
+  /* 대분류: 상단 메뉴바와 같은 탭 */
   .mm-bar { background:#343a40; border-radius:6px 6px 0 0; padding:6px 6px 0; }
   .mm-tabs { display:flex; flex-wrap:wrap; gap:2px; list-style:none; margin:0; padding:0; }
   .mm-tab { position:relative; }
@@ -17,33 +17,36 @@
   body.mm-dragging-item .mm-tab-drop { pointer-events:auto; }
   body.mm-dragging-item .mm-tab:not(.active):not(.mm-tab-add):not(.mm-tab-link) > a { outline:1px dashed #8fd19e; }
   #mm_tabs .mm-tab.mm-drop-hover > a { background:#28a745 !important; color:#fff !important; }
-  /* 하위 메뉴 패널: 드롭다운 모양 */
+  /* 중분류 패널 */
   .mm-panel { border:1px solid rgba(0,0,0,.15); border-top:0; border-radius:0 0 6px 6px; padding:10px; background:#fff; }
   .mm-panel-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
   .mm-panel-head input { max-width:260px; }
   .mm-pane { display:none; }
   .mm-pane.active { display:block; }
-  .mm-items { min-height:46px; }
+  .mm-items, .mm-children { min-height:46px; }
+  .mm-children { border:1px dashed rgba(0,0,0,.15); border-radius:4px; padding:6px; background:#f8f9fa; }
+  /* 아코디언 항목 (중분류 / 소분류 공통) */
   .mm-item { border:1px solid rgba(0,0,0,.1); border-radius:4px; margin-bottom:4px; background:#fff; }
   .mm-item-head { display:flex; align-items:center; gap:8px; padding:8px 10px; cursor:grab; user-select:none; }
   .mm-item-head:hover { background:#f1f3f5; }
   .mm-item.open > .mm-item-head { background:#e9ecef; }
-  .mm-item.mm-hidden .mm-shown { text-decoration:line-through; opacity:.5; }
+  .mm-item.mm-hidden > .mm-item-head .mm-shown { text-decoration:line-through; opacity:.5; }
+  .mm-item.mm-group > .mm-item-head, .mm-item.mm-setting > .mm-item-head { border-left:3px solid #6f42c1; }
   .mm-grip { color:#adb5bd; }
   .mm-label { font-weight:bold; font-size:.9rem; flex:1; min-width:0; }
   .mm-uri { color:#888; font-size:.75rem; font-weight:normal; margin-left:6px; }
   .mm-chevron { color:#888; font-size:1.3rem; line-height:1; transition:transform .15s; }
-  .mm-item.open .mm-chevron { transform:rotate(90deg); }
-  .mm-item-body { display:none; padding:10px 12px 12px 32px; border-top:1px solid rgba(0,0,0,.08); cursor:default; }
+  .mm-item.open > .mm-item-head .mm-chevron { transform:rotate(90deg); }
+  .mm-item-body { display:none; padding:10px 12px 12px 26px; border-top:1px solid rgba(0,0,0,.08); cursor:default; }
   .mm-item.open > .mm-item-body { display:block; }
   .mm-field { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
   .mm-field > .mm-field-label { width:80px; color:#666; font-size:.85rem; }
-  .mm-field .mm-name { max-width:240px; }
+  .mm-field .mm-name, .mm-field .mm-group-name { max-width:240px; }
   .mm-field .mm-move { max-width:200px; }
   .mm-pages { display:flex; flex-wrap:wrap; gap:4px; }
   .mm-pages .badge { font-weight:normal; }
-  .mm-item.mm-divider .mm-item-head { color:#adb5bd; font-size:.8rem; }
-  .mm-empty { color:#888; font-size:.85rem; padding:12px; text-align:center; }
+  .mm-item.mm-divider > .mm-item-head { color:#adb5bd; font-size:.8rem; }
+  .mm-empty { color:#888; font-size:.85rem; padding:10px; text-align:center; }
   .mm-ghost { opacity:.35; background:#d4edda !important; }
   .mm-tab.mm-ghost > a { background:#28a745; color:#fff; }
 </style>
@@ -53,7 +56,8 @@
   <button class="btn btn-sm btn-outline-secondary" id="mm_reload">다시 불러오기</button>
 </div>
 <div class="alert alert-info py-2" style="font-size:.85rem">
-  <b>대메뉴</b>: 탭을 끌어서 순서를 바꿉니다. <b>하위 메뉴</b>: 줄을 끌어서 순서를 바꾸고, 다른 탭 위에 놓으면 그 대메뉴로 옮겨집니다.
+  <b>대분류</b>(탭): 끌어서 순서 변경. <b>중분류</b>: 줄을 끌어서 순서 변경, 다른 탭 위에 놓으면 그 대분류로 이동.
+  <b>소분류</b>: <span style="color:#6f42c1">보라색</span> 중분류를 펼쳐 그 안으로 끌어 넣습니다.
   휴대폰에서는 각 줄의 "이동"을 쓰세요. 저장하면 기존 menu.yaml 은 자동 백업됩니다.
 </div>
 
@@ -70,46 +74,74 @@ var mmItems = {};    // item id -> 데이터
 var mmFolders = {};  // folder id -> {kind, name, raw}
 var mmSeq = 0;
 var mmActive = null;
+var MM_DRAG = { animation: 150, ghostClass: 'mm-ghost', forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4, swapThreshold: 0.65 };
 
 function mmEsc(t) { return $('<div>').text(t == null ? '' : String(t)).html(); }
 function mmId(p) { mmSeq += 1; return p + mmSeq; }
 function mmPane(fid) { return $('#mm_panes > .mm-pane[data-folder="' + fid + '"]'); }
 function mmFolderName(fid) { return fid === UNASSIGNED ? '미분류' : (mmFolders[fid].name || '(이름 없음)'); }
+function mmData($item) { return mmItems[$item.data('id')]; }
+function mmOwn($item, sel) { return $item.children('.mm-item-body').children('.mm-field').find(sel); }
 
 // ---- 렌더링 -----------------------------------------------------------------
+var MOVE_FIELD = '<div class="mm-field"><span class="mm-field-label">이동</span><select class="form-control form-control-sm mm-move"></select></div>';
+function mmHideField(item, label) {
+  return '<div class="mm-field"><span class="mm-field-label">메뉴</span><label class="mb-0" style="font-size:.85rem">'
+    + '<input type="checkbox" class="mm-hide"' + (item.hidden ? ' checked' : '') + '> ' + (label || '메뉴에서 숨기기') + '</label></div>';
+}
+function mmHead(shown, badges, uri, hidden) {
+  return '<div class="mm-item-head"><span class="mm-grip">☰</span>'
+    + '<span class="mm-label"><span class="mm-shown">' + mmEsc(shown) + '</span>' + (badges || '')
+    + ' <span class="badge badge-dark mm-hidden-badge"' + (hidden ? '' : ' style="display:none"') + '>숨김</span>'
+    + (uri ? '<span class="mm-uri">' + mmEsc(uri) + '</span>' : '') + '</span><span class="mm-chevron">&#x203A;</span></div>';
+}
+function mmWrap(id, cls, item, head, body) {
+  return '<div class="mm-item ' + cls + (item.hidden ? ' mm-hidden' : '') + '" data-id="' + id + '">' + head
+    + '<div class="mm-item-body">' + body + '</div></div>';
+}
+
 function mmItemHtml(item) {
   var id = mmId('i');
   mmItems[id] = item;
-  var moveField = '<div class="mm-field"><span class="mm-field-label">이동</span><select class="form-control form-control-sm mm-move"></select></div>';
-  if (item.type !== 'plugin' && item.uri === '-') {
-    return '<div class="mm-item mm-divider" data-id="' + id + '">'
-      + '<div class="mm-item-head"><span class="mm-grip">☰</span><span class="mm-label">── 구분선 ──</span><span class="mm-chevron">&#x203A;</span></div>'
-      + '<div class="mm-item-body">' + moveField + '</div></div>';
+  var t = item.type;
+  if (t === 'group') {
+    var kids = (item.children || []).map(mmItemHtml).join('');
+    return mmWrap(id, 'mm-group', item, mmHead(item.name || '(이름 없음)', ' <span class="badge badge-primary" style="background:#6f42c1">중분류</span>', '', item.hidden),
+      '<div class="mm-field"><span class="mm-field-label">중분류 이름</span><input class="form-control form-control-sm mm-group-name" value="' + mmEsc(item.name || '') + '"></div>'
+      + mmHideField(item, '중분류 전체 숨기기') + MOVE_FIELD
+      + '<div class="mm-field"><span class="mm-field-label">소분류</span><button class="btn btn-sm btn-outline-danger mm-del-group">중분류 해제</button></div>'
+      + '<div class="mm-children" data-kind="group">' + kids + '</div>');
   }
-  var isPlugin = item.type === 'plugin';
+  if (t === 'setting') {
+    var skids = (item.children || []).map(mmItemHtml).join('');
+    return mmWrap(id, 'mm-setting', item, mmHead(item.title, ' <span class="badge badge-primary" style="background:#6f42c1">확장 설정</span>', 'setting', item.hidden),
+      mmHideField(item, '확장 설정 전체 숨기기') + MOVE_FIELD
+      + '<div class="mm-field"><span class="mm-field-label">소분류</span><span class="text-muted" style="font-size:.8rem">각 플러그인의 설정 화면. 이 안에서만 순서 변경/숨기기</span></div>'
+      + '<div class="mm-children mm-setting-children" data-kind="setting">' + skids + '</div>');
+  }
+  if (t === 'setting_plugin') {
+    return mmWrap(id, 'mm-setting-plugin', item, mmHead(item.title, '', item.plugin, item.hidden), mmHideField(item));
+  }
+  if (t !== 'plugin' && item.uri === '-') {
+    return mmWrap(id, 'mm-divider', item, mmHead('── 구분선 ──', '', '', false), MOVE_FIELD);
+  }
+  var isPlugin = t === 'plugin';
   var shown = (isPlugin && item.custom_name) ? item.custom_name : (item.title || item.uri);
   var badges = '';
   if (isPlugin && item.enabled === false) badges += ' <span class="badge badge-secondary">미사용</span>';
   if (!isPlugin) badges += ' <span class="badge badge-light">기본/링크</span>';
-  badges += ' <span class="badge badge-dark mm-hidden-badge"' + (item.hidden ? '' : ' style="display:none"') + '>숨김</span>';
   var body = '';
   if (isPlugin) {
     body += '<div class="mm-field"><span class="mm-field-label">표시 이름</span>'
       + '<input class="form-control form-control-sm mm-name" value="' + mmEsc(item.custom_name || '') + '">'
       + '<span class="text-muted" style="font-size:.8rem">원래 이름: ' + mmEsc(item.title) + '</span></div>';
   }
-  body += '<div class="mm-field"><span class="mm-field-label">메뉴</span>'
-    + '<label class="mb-0" style="font-size:.85rem"><input type="checkbox" class="mm-hide"' + (item.hidden ? ' checked' : '') + '> 메뉴에서 숨기기</label></div>';
-  body += moveField;
+  body += mmHideField(item) + MOVE_FIELD;
   if (isPlugin && item.pages && item.pages.length) {
     body += '<div class="mm-field"><span class="mm-field-label">하위 페이지</span><span class="mm-pages">'
       + item.pages.map(function(p) { return '<span class="badge badge-light">' + mmEsc(p) + '</span>'; }).join('') + '</span></div>';
   }
-  return '<div class="mm-item' + (item.hidden ? ' mm-hidden' : '') + '" data-id="' + id + '">'
-    + '<div class="mm-item-head"><span class="mm-grip">☰</span>'
-    + '<span class="mm-label"><span class="mm-shown">' + mmEsc(shown) + '</span>' + badges + '<span class="mm-uri">' + mmEsc(item.uri) + '</span></span>'
-    + '<span class="mm-chevron">&#x203A;</span></div>'
-    + '<div class="mm-item-body">' + body + '</div></div>';
+  return mmWrap(id, '', item, mmHead(shown, badges, item.uri, item.hidden), body);
 }
 
 function mmTabHtml(fid) {
@@ -123,55 +155,57 @@ function mmTabHtml(fid) {
 }
 
 function mmPaneHtml(fid, items) {
-  var html = '<div class="mm-pane" data-folder="' + fid + '"><div class="mm-items" data-folder="' + fid + '">';
-  (items || []).forEach(function(item) { html += mmItemHtml(item); });
-  return html + '</div></div>';
+  return '<div class="mm-pane" data-folder="' + fid + '"><div class="mm-items" data-folder="' + fid + '">'
+    + (items || []).map(mmItemHtml).join('') + '</div></div>';
 }
 
-function mmAddFolder(folder, prepend) {
+function mmAddFolder(folder) {
   var fid = mmId('f');
   mmFolders[fid] = folder;
-  var $tab = $(mmTabHtml(fid));
-  if (prepend) $('#mm_tabs').prepend($tab); else $('#mm_tabs .mm-tab-unassigned').before($tab);
+  $('#mm_tabs .mm-tab-unassigned').before(mmTabHtml(fid));
   $('#mm_panes').append(mmPaneHtml(fid, folder.kind === 'link' ? [] : folder.items));
   return fid;
 }
 
 function mmRender(data) {
   mmItems = {}; mmFolders = {};
-  $('#mm_tabs').html(mmTabHtml(UNASSIGNED) + '<li class="mm-tab mm-tab-add"><a id="mm_add_folder">+ 대메뉴</a></li>');
+  $('#mm_tabs').html(mmTabHtml(UNASSIGNED) + '<li class="mm-tab mm-tab-add"><a id="mm_add_folder">+ 대분류</a></li>');
   $('#mm_panes').html(mmPaneHtml(UNASSIGNED, data.state.unassigned));
-  (data.state.folders || []).forEach(function(f) { mmAddFolder(f, false); });
+  (data.state.folders || []).forEach(function(f) { mmAddFolder(f); });
   mmBindSortable();
   var first = $('#mm_tabs .mm-tab').not('.mm-tab-add').first().data('folder');
   mmSelect(mmActive && $('#mm_tabs .mm-tab[data-folder="' + mmActive + '"]').length ? mmActive : first);
 }
 
 function mmRefresh() {
-  // 탭 개수, 이동 드롭다운, 빈 목록 안내, 미분류 이름 입력 잠금
   $('#mm_tabs .mm-tab').each(function() {
     var fid = $(this).data('folder');
     if (!fid) return;
-    var n = mmPane(fid).find('.mm-item').length;
-    $(this).find('.mm-count').text(mmFolders[fid] && mmFolders[fid].kind === 'link' ? '' : '(' + n + ')');
-    $(this).children('a').contents().first().replaceWith(document.createTextNode(mmFolderName(fid) + (mmFolders[fid] && mmFolders[fid].kind === 'link' ? ' ↗' : '')));
+    var isLink = mmFolders[fid] && mmFolders[fid].kind === 'link';
+    $(this).find('.mm-count').text(isLink ? '' : '(' + mmPane(fid).children('.mm-items').children('.mm-item').length + ')');
+    $(this).children('a').contents().first().replaceWith(document.createTextNode(mmFolderName(fid) + (isLink ? ' ↗' : '')));
   });
-  var opts = function(current) {
+  $('.mm-move').each(function() {
+    var $item = $(this).closest('.mm-item');
+    var current = $item.closest('.mm-pane').data('folder');
+    var isPlugin = mmData($item).type === 'plugin';
     var html = '<option value="">이동…</option>';
     $('#mm_tabs .mm-tab').each(function() {
       var fid = $(this).data('folder');
-      if (!fid || fid === current || (mmFolders[fid] && mmFolders[fid].kind === 'link')) return;
-      html += '<option value="' + fid + '">' + mmEsc(mmFolderName(fid)) + '</option>';
+      if (!fid || (mmFolders[fid] && mmFolders[fid].kind === 'link')) return;
+      if (fid === UNASSIGNED && !isPlugin) return;
+      if (fid === current && $item.parent().hasClass('mm-items')) return;
+      html += '<option value="' + fid + '">' + mmEsc(mmFolderName(fid)) + (fid === current ? ' (중분류 밖으로)' : '') + '</option>';
     });
-    return html;
-  };
-  $('.mm-items').each(function() {
-    var fid = $(this).data('folder');
-    $(this).find('.mm-move').html(opts(fid));
-    $(this).children('.mm-empty').remove();
-    if ($(this).children('.mm-item').length === 0) $(this).append('<div class="mm-empty">비어 있습니다. 다른 탭의 메뉴를 이 탭 위로 끌어다 놓으세요.</div>');
+    $(this).html(html);
   });
-  mmPane(UNASSIGNED).find('.mm-name').prop('disabled', true).attr('placeholder', '대메뉴로 옮긴 뒤 변경');
+  $('.mm-items, .mm-children').each(function() {
+    $(this).children('.mm-empty').remove();
+    if ($(this).children('.mm-item').length === 0) {
+      $(this).append('<div class="mm-empty">' + ($(this).hasClass('mm-children') ? '플러그인을 여기로 끌어 넣으세요' : '비어 있습니다. 다른 탭의 메뉴를 이 탭 위로 끌어다 놓으세요.') + '</div>');
+    }
+  });
+  mmPane(UNASSIGNED).find('.mm-name').prop('disabled', true).attr('placeholder', '대분류로 옮긴 뒤 변경');
   $('#mm_panes .mm-pane').not('[data-folder="' + UNASSIGNED + '"]').find('.mm-name').prop('disabled', false).attr('placeholder', '표시 이름 (비우면 기본)');
 }
 
@@ -189,27 +223,44 @@ function mmSelect(fid) {
   } else if (f.kind === 'link') {
     head = '<b>' + mmEsc(f.name) + '</b><span class="text-muted" style="font-size:.8rem">상단 바로가기: ' + mmEsc(f.raw.uri || '') + ' (하위 메뉴 없음)</span>';
   } else {
-    head = '<input class="form-control form-control-sm" id="mm_folder_name" value="' + mmEsc(f.name) + '" placeholder="대메뉴 이름">'
-      + '<button class="btn btn-sm btn-outline-danger ml-auto" id="mm_del_folder">대메뉴 삭제</button>';
+    head = '<input class="form-control form-control-sm" id="mm_folder_name" value="' + mmEsc(f.name) + '" placeholder="대분류 이름">'
+      + '<button class="btn btn-sm btn-outline-primary" id="mm_add_group">+ 중분류</button>'
+      + '<button class="btn btn-sm btn-outline-danger ml-auto" id="mm_del_folder">대분류 삭제</button>';
   }
   $('#mm_head').html(head);
   mmRefresh();
 }
 
 // ---- 드래그 ------------------------------------------------------------------
-function mmItemSortable(el) {
+function mmCanDrop(dragEl, toEl) {
+  var data = mmItems[$(dragEl).data('id')];
+  if (!data) return true;
+  var $to = $(toEl);
+  var toFolder = $to.data('folder');
+  if ($to.hasClass('mm-children') && data.type !== 'plugin' && data.uri !== '-') return false;  // 소분류엔 플러그인/구분선만
+  if (toFolder === UNASSIGNED && data.type !== 'plugin') return false;                         // 미분류엔 플러그인만
+  return true;
+}
+
+function mmListSortable(el) {
   if (el._mmSortable) return;
-  el._mmSortable = Sortable.create(el, {
-    group: 'mm-items', animation: 150, ghostClass: 'mm-ghost', draggable: '.mm-item',
-    forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
-    filter: '.mm-item-body', preventOnFilter: false,
+  el._mmSortable = Sortable.create(el, $.extend({}, MM_DRAG, {
+    group: 'mm-items', draggable: '.mm-item', filter: '.mm-item-body', preventOnFilter: false,
     onStart: function() { $('body').addClass('mm-dragging-item'); },
     onMove: function(evt) {
       $('.mm-tab').removeClass('mm-drop-hover');
+      if (!mmCanDrop(evt.dragged, evt.to)) return false;
       if ($(evt.to).hasClass('mm-tab-drop')) $(evt.to).closest('.mm-tab').addClass('mm-drop-hover');
     },
-    onEnd: function() { $('body').removeClass('mm-dragging-item'); $('.mm-tab').removeClass('mm-drop-hover'); mmRefresh(); }
-  });
+    onEnd: function() { $('body').removeClass('mm-dragging-item'); $('.mm-tab').removeClass('mm-drop-hover'); mmBindSortable(); mmRefresh(); }
+  }));
+}
+
+function mmSettingSortable(el) {
+  if (el._mmSortable) return;
+  el._mmSortable = Sortable.create(el, $.extend({}, MM_DRAG, {
+    group: { name: 'mm-setting-' + mmId('s'), pull: false, put: false }, draggable: '.mm-item', filter: '.mm-item-body', preventOnFilter: false
+  }));
 }
 
 function mmTabDropSortable(el) {
@@ -219,31 +270,25 @@ function mmTabDropSortable(el) {
     onAdd: function(evt) {
       var fid = $(el).data('folder');
       var item = evt.item;
-      // Sortable 의 drop 처리가 끝난 뒤 옮겨야 다음 드래그가 정상 동작한다
-      setTimeout(function() {
+      setTimeout(function() {  // Sortable 의 drop 처리가 끝난 뒤 옮긴다
         $(item).removeAttr('style').removeClass('open');
         mmPane(fid).children('.mm-items').append(item);
         mmRefresh();
       }, 0);
     }
   });
-
 }
 
 function mmBindSortable() {
   var tabs = document.getElementById('mm_tabs');
   if (!tabs._mmSortable) {
-    tabs._mmSortable = Sortable.create(tabs, {
-      animation: 150, ghostClass: 'mm-ghost', draggable: '.mm-tab:not(.mm-tab-add)', direction: 'horizontal',
-      forceFallback: true, fallbackOnBody: true, fallbackTolerance: 4,
-      filter: '.mm-tab-add', onEnd: function() {
-        // '+ 대메뉴' 는 항상 맨 끝
-        $('#mm_tabs .mm-tab-add').appendTo('#mm_tabs');
-        mmRefresh();
-      }
-    });
+    tabs._mmSortable = Sortable.create(tabs, $.extend({}, MM_DRAG, {
+      draggable: '.mm-tab:not(.mm-tab-add)', direction: 'horizontal', filter: '.mm-tab-add',
+      onEnd: function() { $('#mm_tabs .mm-tab-add').appendTo('#mm_tabs'); mmRefresh(); }
+    }));
   }
-  document.querySelectorAll('#mm_panes .mm-items').forEach(mmItemSortable);
+  document.querySelectorAll('#mm_panes .mm-items, #mm_panes .mm-children[data-kind="group"]').forEach(mmListSortable);
+  document.querySelectorAll('#mm_panes .mm-setting-children').forEach(mmSettingSortable);
   document.querySelectorAll('#mm_tabs .mm-tab-drop').forEach(mmTabDropSortable);
 }
 
@@ -256,10 +301,20 @@ function mmLoad() {
 }
 
 function mmCollectItem($el) {
-  var item = $.extend(true, {}, mmItems[$el.data('id')]);
-  item.hidden = $el.find('.mm-hide').is(':checked');
-  if (item.type === 'plugin') item.custom_name = ($el.find('.mm-name').val() || '').trim();
+  var item = $.extend(true, {}, mmData($el));
+  item.hidden = mmOwn($el, '.mm-hide').is(':checked');
+  if (item.type === 'plugin') item.custom_name = (mmOwn($el, '.mm-name').val() || '').trim();
+  if (item.type === 'group' || item.type === 'setting') {
+    if (item.type === 'group') item.name = (mmOwn($el, '.mm-group-name').val() || '').trim();
+    item.children = mmCollectList($el.children('.mm-item-body').children('.mm-children'));
+  }
   return item;
+}
+
+function mmCollectList($list) {
+  var out = [];
+  $list.children('.mm-item').each(function() { out.push(mmCollectItem($(this))); });
+  return out;
 }
 
 function mmCollectState() {
@@ -267,8 +322,7 @@ function mmCollectState() {
   $('#mm_tabs .mm-tab').each(function() {
     var fid = $(this).data('folder');
     if (!fid) return;
-    var items = [];
-    mmPane(fid).find('.mm-items > .mm-item').each(function() { items.push(mmCollectItem($(this))); });
+    var items = mmCollectList(mmPane(fid).children('.mm-items'));
     if (fid === UNASSIGNED) {
       items.forEach(function(i) { i.custom_name = ''; });
       state.unassigned = state.unassigned.concat(items);
@@ -289,10 +343,20 @@ $('body').on('click', '#mm_tabs .mm-tab:not(.mm-tab-add) > a', function(e) {
 
 $('body').on('click', '#mm_add_folder', function(e) {
   e.preventDefault();
-  var fid = mmAddFolder({ kind: 'folder', name: '새 메뉴', items: [] }, false);
+  var fid = mmAddFolder({ kind: 'folder', name: '새 메뉴', items: [] });
   mmBindSortable();
   mmSelect(fid);
   $('#mm_folder_name').focus().select();
+});
+
+$('body').on('click', '#mm_add_group', function(e) {
+  e.preventDefault();
+  var $item = $(mmItemHtml({ type: 'group', name: '새 중분류', hidden: false, children: [] })).addClass('open');
+  mmPane(mmActive).children('.mm-items').children('.mm-item.open').removeClass('open');
+  mmPane(mmActive).children('.mm-items').prepend($item);
+  mmBindSortable();
+  mmRefresh();
+  mmOwn($item, '.mm-group-name').focus().select();
 });
 
 $('body').on('input', '#mm_folder_name', function() {
@@ -300,44 +364,58 @@ $('body').on('input', '#mm_folder_name', function() {
   mmRefresh();
 });
 
+$('body').on('input', '.mm-group-name', function() {
+  var $item = $(this).closest('.mm-item');
+  $item.children('.mm-item-head').find('.mm-shown').text(($(this).val() || '').trim() || '(이름 없음)');
+});
+
+$('body').on('click', '.mm-del-group', function(e) {
+  e.preventDefault();
+  var $group = $(this).closest('.mm-item');
+  $group.children('.mm-item-body').children('.mm-children').children('.mm-item').insertAfter($group);
+  $group.remove();
+  mmRefresh();
+});
+
 $('body').on('click', '#mm_del_folder', function(e) {
   e.preventDefault();
   var fid = mmActive;
-  var $items = mmPane(fid).find('.mm-item');
-  var others = $items.filter(function() { return mmItems[$(this).data('id')].type !== 'plugin'; });
-  if (others.length > 0) { notify('기본 메뉴/링크가 있는 대메뉴는 삭제할 수 없습니다. 먼저 다른 대메뉴로 옮겨 주세요.', 'warning'); return; }
-  $items.appendTo(mmPane(UNASSIGNED).children('.mm-items'));
+  var $top = mmPane(fid).children('.mm-items').children('.mm-item');
+  var blocked = $top.filter(function() { var t = mmData($(this)).type; return t === 'other' && mmData($(this)).uri !== '-' || t === 'setting'; });
+  if (blocked.length > 0) { notify('기본 메뉴/링크/확장 설정이 있는 대분류는 삭제할 수 없습니다. 먼저 다른 대분류로 옮겨 주세요.', 'warning'); return; }
+  var $dest = mmPane(UNASSIGNED).children('.mm-items');
+  mmPane(fid).find('.mm-item').filter(function() { return mmData($(this)).type === 'plugin'; }).removeClass('open').appendTo($dest);
   $('#mm_tabs .mm-tab[data-folder="' + fid + '"]').remove();
   mmPane(fid).remove();
   delete mmFolders[fid];
   mmSelect(UNASSIGNED);
 });
 
-$('body').on('change', '.mm-move', function() {
-  var target = $(this).val();
-  if (!target) return;
-  $(this).closest('.mm-item').appendTo(mmPane(target).children('.mm-items'));
-  mmRefresh();
-});
-
 $('body').on('click', '.mm-item-head', function() {
   var $item = $(this).closest('.mm-item');
   var open = !$item.hasClass('open');
-  $item.closest('.mm-items').children('.mm-item.open').not($item).removeClass('open');
+  $item.parent().children('.mm-item.open').not($item).removeClass('open');
   $item.toggleClass('open', open);
+});
+
+$('body').on('change', '.mm-move', function() {
+  var target = $(this).val();
+  if (!target) return;
+  $(this).closest('.mm-item').removeClass('open').appendTo(mmPane(target).children('.mm-items'));
+  mmRefresh();
 });
 
 $('body').on('change', '.mm-hide', function() {
   var hidden = $(this).is(':checked');
   var $item = $(this).closest('.mm-item');
   $item.toggleClass('mm-hidden', hidden);
-  $item.find('.mm-hidden-badge').toggle(hidden);
+  $item.children('.mm-item-head').find('.mm-hidden-badge').toggle(hidden);
 });
 
 $('body').on('input', '.mm-name', function() {
   var $item = $(this).closest('.mm-item');
-  var data = mmItems[$item.data('id')];
-  $item.find('.mm-shown').text(($(this).val() || '').trim() || data.title || data.uri);
+  var data = mmData($item);
+  $item.children('.mm-item-head').find('.mm-shown').text(($(this).val() || '').trim() || data.title || data.uri);
 });
 
 $('body').on('click', '#mm_save', function(e) {

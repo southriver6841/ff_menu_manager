@@ -200,3 +200,70 @@ def test_plugin_pages_are_passed_to_editor():
     assert state["unassigned"][0]["pages"] == []
     # pages 는 화면용일 뿐 menu.yaml 에 쓰지 않는다
     assert mm.build_menu_yaml(state) == [{"name": "유틸", "list": [{"uri": "ff_naverpaper"}]}]
+
+
+# ---- 3단계(대/중/소분류) ----------------------------------------------------------
+
+THREE_LEVEL_YAML = [
+    {"name": "유틸", "list": [
+        {"uri": "terminal"},
+        {"uri": mm.GROUP_URI, "name": "다운로드", "list": [{"uri": "bot_downloader", "name": "봇"}, {"uri": "-"}, {"uri": "ff_naverpaper"}]},
+    ]},
+    {"name": "시스템", "list": [
+        {"uri": "system", "name": "설정"},
+        {"uri": "setting", "name": "확장 설정", "list": [{"plugin": "terminal"}, {"uri": "-"}, {"plugin": "support_site", "hidden": True}]},
+    ]},
+]
+SETTING_PLUGINS = {"terminal": "터미널 설정", "support_site": "사이트 지원", "flaskcode": "편집기"}
+
+
+def test_group_children_are_read_and_count_as_assigned():
+    state = mm.build_editor_state(copy.deepcopy(THREE_LEVEL_YAML), INSTALLED, SETTING_PLUGINS)
+
+    group = state["folders"][0]["items"][1]
+    assert group["type"] == "group" and group["name"] == "다운로드"
+    assert [(c["type"], c["uri"]) for c in group["children"]] == [("plugin", "bot_downloader"), ("other", "-"), ("plugin", "ff_naverpaper")]
+    assert group["children"][0]["custom_name"] == "봇"
+    assert "ff_naverpaper" not in [i["uri"] for i in state["unassigned"]]
+
+
+def test_setting_children_include_unlisted_setting_plugins():
+    """확장 설정에 안 적힌 플러그인 설정도 → FF처럼 뒤에 붙여 보여 준다."""
+    state = mm.build_editor_state(copy.deepcopy(THREE_LEVEL_YAML), INSTALLED, SETTING_PLUGINS)
+
+    setting = state["folders"][1]["items"][1]
+    assert setting["type"] == "setting" and setting["title"] == "확장 설정"
+    kids = [(c["type"], c.get("plugin") or c.get("uri"), c.get("hidden", False)) for c in setting["children"]]
+    assert kids == [("setting_plugin", "terminal", False), ("other", "-", False),
+                    ("setting_plugin", "support_site", True), ("setting_plugin", "flaskcode", False)]
+    assert setting["children"][0]["title"] == "터미널 설정"
+
+
+def test_three_level_roundtrip():
+    state = mm.build_editor_state(copy.deepcopy(THREE_LEVEL_YAML), INSTALLED, {"terminal": "t", "support_site": "s"})
+    assert mm.build_menu_yaml(state) == THREE_LEVEL_YAML
+
+
+def test_new_group_with_moved_plugin():
+    state = mm.build_editor_state([{"name": "유틸", "list": [{"uri": "terminal"}]}], INSTALLED)
+    naver = [i for i in state["unassigned"] if i["uri"] == "ff_naverpaper"][0]
+    state["unassigned"].remove(naver)
+    state["folders"][0]["items"].append({"type": "group", "name": "돈벌기", "children": [naver]})
+
+    assert mm.build_menu_yaml(state) == [{"name": "유틸", "list": [
+        {"uri": "terminal"}, {"uri": mm.GROUP_URI, "name": "돈벌기", "list": [{"uri": "ff_naverpaper"}]}]}]
+
+
+def test_empty_group_dropped_and_blank_group_name_rejected():
+    state = {"folders": [{"kind": "folder", "name": "유틸", "items": [
+        {"type": "plugin", "uri": "terminal", "title": "터미널"},
+        {"type": "group", "name": "빈 그룹", "children": []}]}], "unassigned": []}
+    assert mm.build_menu_yaml(state) == [{"name": "유틸", "list": [{"uri": "terminal"}]}]
+
+    state["folders"][0]["items"][1] = {"type": "group", "name": " ", "children": [{"type": "plugin", "uri": "bot", "title": "봇"}]}
+    try:
+        mm.build_menu_yaml(state)
+    except ValueError as e:
+        assert "중분류 이름" in str(e)
+    else:
+        raise AssertionError("blank group name must be rejected")

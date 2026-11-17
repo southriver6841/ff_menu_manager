@@ -24,8 +24,13 @@ class ModuleMain(PluginModuleBase):
     # ---- FF 수명주기 -------------------------------------------------------------
     def plugin_load(self):
         try:
-            MenuManager, _ = _managers()
-            if menu_hook.install(MenuManager, lambda: menu_store.read_menu_yaml(self._menu_path()), P.logger):
+            MenuManager, PluginManager = _managers()
+            if menu_hook.install(
+                MenuManager,
+                lambda: menu_store.read_menu_yaml(self._menu_path()),
+                P.logger,
+                get_plugin_menus=lambda: getattr(PluginManager, "plugin_menus", {}) or {},
+            ):
                 MenuManager.init_menu()
                 P.logger.info("[menu_manager] menu override installed")
         except Exception as e:
@@ -103,6 +108,15 @@ class ModuleMain(PluginModuleBase):
             }
         return installed
 
+    def _setting_plugins(self):
+        """확장 설정(소분류) 후보: {plugin: 표시 이름}"""
+        _, PluginManager = _managers()
+        result = {}
+        for menu in getattr(PluginManager, "setting_menus", []) or []:
+            if isinstance(menu, dict) and menu.get("plugin"):
+                result[str(menu["plugin"])] = str(menu.get("name") or menu["plugin"])
+        return result
+
     @staticmethod
     def _info_title(package):
         path = (package or {}).get("path")
@@ -118,7 +132,7 @@ class ModuleMain(PluginModuleBase):
 
     def _load(self):
         installed = self._installed()
-        state = menu_model.build_editor_state(menu_store.read_menu_yaml(self._menu_path()), installed)
+        state = menu_model.build_editor_state(menu_store.read_menu_yaml(self._menu_path()), installed, self._setting_plugins())
         return {
             "state": state,
             "plugins": [dict(name=k, **v) for k, v in sorted(installed.items())],

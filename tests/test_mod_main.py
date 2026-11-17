@@ -165,3 +165,25 @@ def test_plugin_load_adds_my_plugins_to_ff_catalog(ff, monkeypatch):
     packages = [p["package_name"] for p in ret["data"][0]["list"]]
     assert packages == ["ff_menu_manager", "ff_naverpaper"]
     assert ret["data"][0]["list"][0]["home"] == "https://github.com/southriver6841/ff_menu_manager"
+
+
+def test_load_passes_setting_menus_and_save_keeps_groups(ff):
+    import sys
+    pm = sys.modules["framework.init_plugin"].PluginManager
+    pm.setting_menus = [{"plugin": "terminal", "name": "터미널 설정", "uri": "terminal/setting"}]
+    ff.menu_path.write_text(yaml.safe_dump([
+        {"name": "유틸", "list": [{"uri": "mm_group", "name": "도구", "list": [{"uri": "ff_naverpaper"}]}]},
+        {"name": "시스템", "list": [{"uri": "setting", "name": "확장 설정"}]},
+    ], allow_unicode=True), encoding="utf-8")
+    ff.main.plugin_load()
+
+    state = ff.main.process_command("load", None, None, None, None)["data"]["state"]
+    group = state["folders"][0]["items"][0]
+    assert group["type"] == "group" and group["children"][0]["uri"] == "ff_naverpaper"
+
+    ret = ff.main.process_command("save_menu", json.dumps(state), None, None, None)
+    assert ret["ret"] == "success"
+    menu = ff.MenuManager.menu_map
+    sub = [i for c in menu for i in c.get("list", []) if i.get("name") == "도구"]
+    assert sub and [c["uri"] for c in sub[0]["list"]] == ["ff_naverpaper"]
+    del pm.setting_menus
