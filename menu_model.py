@@ -54,8 +54,11 @@ def _setting_state(raw, setting_plugins):
         if name not in listed:
             children.append({"type": "setting_plugin", "plugin": name, "title": setting_plugins[name], "hidden": False})
     head = {k: v for k, v in raw.items() if k not in ("list", "hidden")}
-    return {"type": "setting", "uri": SETTING_URI, "title": raw.get("name") or "확장 설정",
-            "hidden": bool(raw.get("hidden")), "raw": head, "children": children}
+    state = {"type": "setting", "uri": SETTING_URI, "title": raw.get("name") or "확장 설정",
+             "hidden": bool(raw.get("hidden")), "raw": head, "children": children}
+    if "list" not in raw:  # FF 기본: 모든 확장 설정 자동 표시. 바꾸지 않으면 list 를 쓰지 않는다
+        state["implicit_order"] = [c["plugin"] for c in children]
+    return state
 
 
 def _item_state(raw, installed, setting_plugins, assigned):
@@ -67,7 +70,7 @@ def _item_state(raw, installed, setting_plugins, assigned):
                 children.append(_item_state(child, installed, setting_plugins, assigned))
         return {"type": "group", "uri": GROUP_URI, "name": raw.get("name", ""),
                 "hidden": bool(raw.get("hidden")), "children": children}
-    if uri == SETTING_URI and "list" in raw:
+    if uri == SETTING_URI:
         return _setting_state(raw, setting_plugins)
     if uri in installed:
         assigned.add(uri)
@@ -125,6 +128,10 @@ def _item_yaml(item):
             raise ValueError("중분류 이름이 비어 있습니다.")
         return _with_hidden({"uri": GROUP_URI, "name": name, "list": children}, item.get("hidden"))
     if kind == "setting":
+        kids = item.get("children") or []
+        implicit = item.get("implicit_order")
+        if implicit is not None and not any(c.get("hidden") or c.get("type") != "setting_plugin" for c in kids)                 and [c.get("plugin") for c in kids] == implicit:
+            return _with_hidden(copy.deepcopy(item.get("raw") or {"uri": SETTING_URI}), item.get("hidden"))
         children = []
         for child in item.get("children") or []:
             if child.get("type") == "setting_plugin":

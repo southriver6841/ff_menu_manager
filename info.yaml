@@ -1,5 +1,5 @@
 title: "메뉴 관리"
-version: "0.4.0"
+version: "0.4.1"
 package_name: "ff_menu_manager"
 developer: "southriver6841"
 description: "설치된 플러그인 메뉴의 폴더 생성/이동, 이름 변경, 숨기기, 사용/미사용 관리"

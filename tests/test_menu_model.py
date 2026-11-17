@@ -267,3 +267,22 @@ def test_empty_group_dropped_and_blank_group_name_rejected():
         assert "중분류 이름" in str(e)
     else:
         raise AssertionError("blank group name must be rejected")
+
+
+def test_setting_without_list_still_shows_all_setting_plugins():
+    """menu.yaml 에 '- uri: setting' 만 있고 list 가 없어도 → FF 처럼 모든 확장 설정을 소분류로 보여 준다."""
+    yaml_list = [{"name": "시스템", "list": [{"uri": "system", "name": "설정"}, {"uri": "setting", "name": "확장 설정"}]}]
+
+    state = mm.build_editor_state(copy.deepcopy(yaml_list), INSTALLED, SETTING_PLUGINS)
+
+    setting = state["folders"][0]["items"][1]
+    assert setting["type"] == "setting"
+    assert [c["plugin"] for c in setting["children"]] == ["terminal", "support_site", "flaskcode"]
+
+
+def test_setting_without_list_and_no_changes_is_saved_unchanged():
+    """아무것도 안 바꿨으면 → list 를 새로 쓰지 않는다(FF 기본 동작 유지)."""
+    yaml_list = [{"name": "시스템", "list": [{"uri": "setting", "name": "확장 설정"}]}]
+    state = mm.build_editor_state(copy.deepcopy(yaml_list), INSTALLED, SETTING_PLUGINS)
+
+    assert mm.build_menu_yaml(state) == yaml_list
